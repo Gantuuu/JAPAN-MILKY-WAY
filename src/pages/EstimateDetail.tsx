@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { BottomNav } from '../components/layout/BottomNav';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { useToast } from '../components/ui/Toast';
 
 export const EstimateDetail: React.FC = () => {
@@ -22,11 +22,7 @@ export const EstimateDetail: React.FC = () => {
         if (!confirmed) return;
 
         try {
-            const { error } = await supabase
-                .from('quotes')
-                .update({ status: 'reservation_requested' })
-                .eq('id', id);
-
+            const { error } = await (api.quotes as any).update(id, { status: 'reservation_requested' });
             if (error) throw error;
 
             setEstimate((prev: any) => ({ ...prev, adminStatus: 'reservation_requested', statusLabel: '예약 요청됨' }));
@@ -50,8 +46,8 @@ export const EstimateDetail: React.FC = () => {
         if (!confirmed) return;
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
+            const me = await api.auth.me();
+            if (!me) {
                 showToast('error', '로그인이 필요합니다.');
                 navigate('/login');
                 return;
@@ -108,47 +104,51 @@ export const EstimateDetail: React.FC = () => {
 
     useEffect(() => {
         const fetchEstimate = async () => {
-            const { data } = await supabase.from('quotes').select('*').eq('id', id).single();
-            if (data) {
-                setEstimate({
-                    id: data.id,
-                    status: data.status,
-                    statusLabel:
-                        data.status === 'converted' ? '예약 확정됨' :
-                            data.status === 'reservation_requested' ? '예약 요청됨' :
-                                data.status === 'answered' ? '견적 도착' :
-                                    data.status === 'processing' ? '견적 작성중' : '접수 완료',
-                    adminStatus: data.status,
-                    // Fix: Use data.destination (string) and split it if needed for title
-                    title: data.title || `${data.destination} 여행 견적`,
-                    date: data.travel_dates || data.period, // data.period is used in CustomEstimate
-                    type: data.trip_type || '맞춤여행',
-                    people: data.travelers || data.headcount,
-                    requestDate: new Date(data.created_at).toLocaleDateString('ko-KR') + ' 요청',
-                    // Fix: Map data.destination (string) to array
-                    destinations: data.destination ? data.destination.split(', ') : [],
-                    // Fix: Map data.travel_types to themes
-                    themes: data.travel_types,
-                    // Fix: Map data.accommodations (plural)
-                    accommodations: data.accommodations,
-                    vehicle: data.vehicle,
-                    // Fix: Remove '만원' if it exists in data, or handled in UI. 
-                    // Let's keep data raw here and handle UI carefully.
-                    priceRange: data.budget,
-                    additionalRequest: data.additional_request, // Check column name in CustomEstimate: additional_request
-                    contact: { name: data.name, phone: data.phone, email: data.email }, // CustomEstimate uses name/phone/email columns directly on quotes? or joined?
-                    // Wait, CustomEstimate inserts name, phone, email into quotes table directly.
-                    // EstimateDetail line 50 was: contact: { name: data.customer_name, phone: data.phone, email: data.email }
-                    // CustomEstimate Line 43: name: name, phone: phone...
-                    // So it should be data.name.
-                    estimateUrl: data.estimate_url,
-                    adminNote: data.admin_note,
-                    // Admin confirmed values
-                    confirmedPrice: data.confirmed_price,
-                    deposit: data.deposit,
-                    confirmedStartDate: data.confirmed_start_date,
-                    confirmedEndDate: data.confirmed_end_date
-                });
+            try {
+                const data = await api.quotes.get(id as string);
+                if (data) {
+                    setEstimate({
+                        id: data.id,
+                        status: data.status,
+                        statusLabel:
+                            data.status === 'converted' ? '예약 확정됨' :
+                                data.status === 'reservation_requested' ? '예약 요청됨' :
+                                    data.status === 'answered' ? '견적 도착' :
+                                        data.status === 'processing' ? '견적 작성중' : '접수 완료',
+                        adminStatus: data.status,
+                        // Fix: Use data.destination (string) and split it if needed for title
+                        title: data.title || `${data.destination} 여행 견적`,
+                        date: data.travel_dates || data.period, // data.period is used in CustomEstimate
+                        type: data.trip_type || '맞춤여행',
+                        people: data.travelers || data.headcount,
+                        requestDate: new Date(data.created_at).toLocaleDateString('ko-KR') + ' 요청',
+                        // Fix: Map data.destination (string) to array
+                        destinations: data.destination ? data.destination.split(', ') : [],
+                        // Fix: Map data.travel_types to themes
+                        themes: data.travel_types,
+                        // Fix: Map data.accommodations (plural)
+                        accommodations: data.accommodations,
+                        vehicle: data.vehicle,
+                        // Fix: Remove '만원' if it exists in data, or handled in UI. 
+                        // Let's keep data raw here and handle UI carefully.
+                        priceRange: data.budget,
+                        additionalRequest: data.additional_request, // Check column name in CustomEstimate: additional_request
+                        contact: { name: data.name, phone: data.phone, email: data.email }, // CustomEstimate uses name/phone/email columns directly on quotes? or joined?
+                        // Wait, CustomEstimate inserts name, phone, email into quotes table directly.
+                        // EstimateDetail line 50 was: contact: { name: data.customer_name, phone: data.phone, email: data.email }
+                        // CustomEstimate Line 43: name: name, phone: phone...
+                        // So it should be data.name.
+                        estimateUrl: data.estimate_url,
+                        adminNote: data.admin_note,
+                        // Admin confirmed values
+                        confirmedPrice: data.confirmed_price,
+                        deposit: data.deposit,
+                        confirmedStartDate: data.confirmed_start_date,
+                        confirmedEndDate: data.confirmed_end_date
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching estimate:', error);
             }
         };
         fetchEstimate();

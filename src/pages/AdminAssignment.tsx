@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminSidebar } from '../components/admin/AdminSidebar';
 import { GuideSelectionModal, AccommodationSelectionModal } from '../components/admin/SelectionModals';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 
 interface Reservation {
     id: string;
@@ -47,14 +47,9 @@ export const AdminAssignment: React.FC = () => {
     const loadReservations = async () => {
         setIsLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('reservations')
-                .select('*')
-                .order('created_at', { ascending: false });
+            const data = await api.reservations.list();
 
-            if (error) throw error;
-
-            if (data) {
+            if (Array.isArray(data)) {
                 const mapData = data.map((r: any) => ({
                     id: r.id,
                     productName: r.product_name,
@@ -145,12 +140,7 @@ export const AdminAssignment: React.FC = () => {
                 daily_accommodations: updated.dailyAccommodations || []
             };
 
-            const { error } = await supabase
-                .from('reservations')
-                .update(updatePayload)
-                .eq('id', updated.id);
-
-            if (error) throw error;
+            await api.reservations.update(updated.id, updatePayload);
 
             setReservations(prev =>
                 prev.map(res => res.id === updated.id ? updated : res)

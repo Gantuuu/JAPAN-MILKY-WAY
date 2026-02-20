@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { SEO } from '../components/seo/SEO';
 import { optimizeImage } from '../utils/imageOptimizer';
 import { getOptimizedImageUrl, getResponsiveImageProps } from '../utils/supabaseImage';
@@ -24,44 +24,39 @@ export const ProductDetail: React.FC = () => {
             if (!id) return;
             setIsLoading(true);
 
-            const { data, error } = await supabase
-                .from('products')
-                .select('*')
-                .eq('id', id)
-                .single();
-
-            if (data) {
-                // Map fields
-                const mappedProduct: TourProduct = {
-                    id: data.id,
-                    name: data.name,
-                    price: data.price,
-                    originalPrice: data.original_price,
-                    duration: data.duration,
-                    category: data.category,
-                    mainImages: data.main_images || [],
-                    isPopular: data.is_popular,
-                    tags: data.tags || [],
-                    description: data.description,
-                    galleryImages: data.gallery_images || [],
-                    detailImages: data.detail_images || [],
-                    detailBlocks: data.detail_blocks || [], // New Unified Blocks
-                    itineraryBlocks: data.itinerary_blocks || [],
-                    itineraryImages: data.itinerary_images || [],
-                    status: data.status,
-                    isFeatured: data.is_featured,
-                    highlights: data.highlights || [],
-                    included: data.included || [],
-                    excluded: data.excluded || [],
-                    viewCount: data.view_count,
-                    bookingCount: data.booking_count,
-                    createdAt: data.created_at,
-                    updatedAt: data.updated_at
-                };
-
-                setProduct(mappedProduct);
-                addToRecentlyViewed(mappedProduct);
-            } else {
+            try {
+                const data = await api.products.get(id);
+                if (data) {
+                    const mappedProduct: TourProduct = {
+                        id: data.id,
+                        name: data.name,
+                        price: data.price,
+                        originalPrice: data.original_price,
+                        duration: data.duration,
+                        category: data.category,
+                        mainImages: data.main_images || [],
+                        isPopular: data.is_popular,
+                        tags: data.tags || [],
+                        description: data.description,
+                        galleryImages: data.gallery_images || [],
+                        detailImages: data.detail_images || [],
+                        detailBlocks: data.detail_blocks || [],
+                        itineraryBlocks: data.itinerary_blocks || [],
+                        itineraryImages: data.itinerary_images || [],
+                        status: data.status,
+                        isFeatured: data.is_featured,
+                        highlights: data.highlights || [],
+                        included: data.included || [],
+                        excluded: data.excluded || [],
+                        viewCount: data.view_count,
+                        bookingCount: data.booking_count,
+                        createdAt: data.created_at,
+                        updatedAt: data.updated_at
+                    };
+                    setProduct(mappedProduct);
+                    addToRecentlyViewed(mappedProduct);
+                }
+            } catch (error) {
                 console.error("Product fetch error:", error);
             }
             setIsLoading(false);
@@ -70,32 +65,32 @@ export const ProductDetail: React.FC = () => {
 
         // Helper functions
         const addToRecentlyViewed = async (product: TourProduct) => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-
-            await supabase.from('recently_viewed').upsert({
-                user_id: user.id,
-                product_id: product.id,
-                title: product.name,
-                image: product.mainImages[0],
-                price: product.price,
-                type: 'product',
-                created_at: new Date().toISOString()
-            }, { onConflict: 'user_id, product_id' });
+            try {
+                const me = await api.auth.me();
+                if (!me) return;
+                await api.recentlyViewed.upsert({
+                    product_id: product.id,
+                    title: product.name,
+                    image: product.mainImages[0],
+                    price: product.price,
+                    type: 'product'
+                });
+            } catch (error) {
+                // Silently fail for non-logged in users
+            }
         };
 
         const checkWishlistStatus = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user || !id) return;
-
-            const { data } = await supabase
-                .from('wishlist')
-                .select('id')
-                .eq('user_id', user.id)
-                .eq('product_id', id)
-                .maybeSingle();
-
-            setIsInWishlist(!!data);
+            try {
+                const me = await api.auth.me();
+                if (!me || !id) return;
+                const wishlistData = await api.wishlist.list();
+                if (Array.isArray(wishlistData)) {
+                    setIsInWishlist(wishlistData.some((w: any) => w.product_id === id));
+                }
+            } catch (error) {
+                // Silently fail for non-logged in users
+            }
         };
 
         fetchProduct();
@@ -109,37 +104,26 @@ export const ProductDetail: React.FC = () => {
         setWishlistLoading(true);
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
+            const me = await api.auth.me();
+            if (!me) {
                 alert('로그인이 필요한 서비스입니다.');
                 navigate('/login');
                 return;
             }
 
             if (isInWishlist) {
-                // Remove
-                const { error } = await supabase
-                    .from('wishlist')
-                    .delete()
-                    .eq('user_id', user.id)
-                    .eq('product_id', product.id);
-
-                if (!error) setIsInWishlist(false);
+                await api.wishlist.remove(product.id);
+                setIsInWishlist(false);
             } else {
-                // Add
-                const { error } = await supabase
-                    .from('wishlist')
-                    .insert({
-                        user_id: user.id,
-                        product_id: product.id,
-                        title: product.name,
-                        image: product.mainImages[0],
-                        price: product.price,
-                        category: product.category,
-                        type: 'product'
-                    });
-
-                if (!error) setIsInWishlist(true);
+                await api.wishlist.add({
+                    product_id: product.id,
+                    title: product.name,
+                    image: product.mainImages[0],
+                    price: product.price,
+                    category: product.category,
+                    type: 'product'
+                });
+                setIsInWishlist(true);
             }
         } catch (error) {
             console.error('Wishlist toggle error:', error);

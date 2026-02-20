@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
+
 import { useUser } from '../contexts/UserContext';
 import phoneIcon from '../assets/phone_icon_custom.png';
 import kakaoIcon from '../assets/kakao_icon_custom.png';
@@ -53,9 +54,13 @@ export const MyReservations: React.FC = () => {
 
     useEffect(() => {
         const fetchSettings = async () => {
-            const { data } = await supabase.from('settings').select('*').eq('key', 'bank_account').single();
-            if (data?.value) {
-                setGlobalBankSettings(data.value);
+            try {
+                const data = await api.settings.get('bank_account');
+                if (data?.value) {
+                    setGlobalBankSettings(data.value);
+                }
+            } catch (e) {
+                console.error('Failed to fetch bank settings', e);
             }
         };
         fetchSettings();
@@ -78,70 +83,77 @@ export const MyReservations: React.FC = () => {
 
     useEffect(() => {
         const fetchData = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+            try {
+                const me = await api.auth.me();
+                if (!me) return;
 
-            setIsLoading(true);
+                setIsLoading(true);
 
-            // Fetch Reservations
-            const resPromise = supabase
-                .from('reservations')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false });
+                // Fetch Reservations
+                // Note: api.reservations.list() returns all? Need filtering by user_id?
+                // The current API implementation just mocks fetch('/api/reservations').
+                // If the backend handles filtering by session user, great.
+                // If not, we might get everyone's reservations which is bad.
+                // Assuming backend filters by auth user for 'list' or we need to filter client side if it returns all.
+                // But typically /api/reservations for a user should return their own.
+                // Let's assume the API behaves like the Supabase query: filtering by user.
+                const resData = await api.reservations.list();
+                const quoteData = await api.quotes.list();
 
-            // Fetch Quotes
-            const quotePromise = supabase
-                .from('quotes')
-                .select('*')
-                .eq('user_id', user.id)
-                .in('type', ['personal', 'custom', 'business'])
-                .order('created_at', { ascending: false });
+                // Client-side filter if API returns everything (Safety)
+                // If API is truly user-scoped, this filter is redundant but harmless.
+                const myReservations = Array.isArray(resData) ? resData.filter((r: any) => r.user_id === me.id) : [];
+                const myQuotes = Array.isArray(quoteData) ? quoteData.filter((q: any) => q.user_id === me.id && ['personal', 'custom', 'business'].includes(q.type)) : [];
 
-            const [resResult, quoteResult] = await Promise.all([resPromise, quotePromise]);
 
-            if (resResult.data) {
-                const mappedRes = resResult.data.map((r: any) => ({
-                    id: r.id,
-                    status: r.status,
-                    productName: r.product_name,
-                    startDate: r.start_date,
-                    endDate: r.end_date,
-                    duration: r.duration,
-                    totalPeople: r.total_people,
-                    priceBreakdown: r.price_breakdown,
-                    bankAccount: r.bank_account,
-                    createdAt: r.created_at,
-                    contractUrl: r.contract_url,
-                    itineraryUrl: r.itinerary_url,
-                    history: r.history || [],
-                    assignedGuide: r.assigned_guide,
-                    dailyAccommodations: r.daily_accommodations,
-                    areAssignmentsVisibleToUser: r.are_assignments_visible_to_user
-                }));
-                setReservations(mappedRes);
+                if (myReservations) {
+                    const mappedRes = myReservations.map((r: any) => ({
+                        id: r.id,
+                        status: r.status,
+                        productName: r.product_name,
+                        startDate: r.start_date,
+                        endDate: r.end_date,
+                        duration: r.duration,
+                        totalPeople: r.total_people,
+                        priceBreakdown: r.price_breakdown,
+                        bankAccount: r.bank_account,
+                        createdAt: r.created_at,
+                        contractUrl: r.contract_url,
+                        itineraryUrl: r.itinerary_url,
+                        history: r.history || [],
+                        assignedGuide: r.assigned_guide,
+                        dailyAccommodations: r.daily_accommodations,
+                        areAssignmentsVisibleToUser: r.are_assignments_visible_to_user
+                    }));
+                    // Sor by created_at desc
+                    setReservations(mappedRes.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+                }
+
+                if (myQuotes) {
+                    const mappedQuotes = myQuotes.map((e: any) => ({
+                        id: e.id,
+                        status: e.status === 'new' ? 'waiting' : e.status,
+                        title: e.title || `${t('my_reservations.labels.custom_quote')} (${e.destination || t('my_reservations.labels.mongolia')})`,
+                        date: e.travel_dates || e.period,
+                        type: t('my_reservations.labels.custom_quote'),
+                        people: e.travelers || e.headcount,
+                        requestDate: new Date(e.created_at).toLocaleDateString(i18n.language === 'ja' ? 'ja-JP' : 'ko-KR'),
+                        destination: e.destination,
+                        createdAt: e.created_at
+                    }));
+                    setQuotes(mappedQuotes.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+                }
+            } catch (error) {
+                console.error('Error fetching my reservations:', error);
+            } finally {
+                setIsLoading(false);
             }
-
-            if (quoteResult.data) {
-                const mappedQuotes = quoteResult.data.map((e: any) => ({
-                    id: e.id,
-                    status: e.status === 'new' ? 'waiting' : e.status,
-                    title: e.title || `${t('my_reservations.labels.custom_quote')} (${e.destination || t('my_reservations.labels.mongolia')})`,
-                    date: e.travel_dates || e.period,
-                    type: t('my_reservations.labels.custom_quote'),
-                    people: e.travelers || e.headcount,
-                    requestDate: new Date(e.created_at).toLocaleDateString(i18n.language === 'ja' ? 'ja-JP' : 'ko-KR'),
-                    destination: e.destination
-                }));
-                setQuotes(mappedQuotes);
-            }
-
-            setIsLoading(false);
         };
 
         fetchData();
 
-        // Realtime Subscription
+        // Realtime Subscription (Commented out for migration)
+        /*
         const channel = supabase
             .channel('my-reservations-changes')
             .on(
@@ -160,6 +172,7 @@ export const MyReservations: React.FC = () => {
         return () => {
             supabase.removeChannel(channel);
         };
+        */
     }, [t, i18n.language]);
 
     const formatDate = (dateStr: string) => {

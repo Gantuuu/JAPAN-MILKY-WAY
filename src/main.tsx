@@ -15,7 +15,7 @@ import { UserProvider } from './contexts/UserContext'
 import { HelmetProvider } from 'react-helmet-async'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { supabase } from './lib/supabaseClient'
+
 
 
 

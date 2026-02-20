@@ -14,16 +14,7 @@ export interface AdminQuote {
     [key: string]: any;
 }
 
-export interface MyBusinessEstimate {
-    id: string;
-    status: string;
-    title: string;
-    date: string;
-    schedule: string;
-    type: string;
-    attachment?: File | Blob;
-    [key: string]: any;
-}
+
 
 export interface RecentlyViewed {
     id: string; // product ID
@@ -98,7 +89,7 @@ export interface TravelMate {
 export class MongolGalaxyDB extends Dexie {
     // 'friends' is just an example. 'adminQuotes' etc. are proper names
     adminQuotes!: Table<AdminQuote>;
-    myBusinessEstimates!: Table<MyBusinessEstimate>;
+
     myEstimates!: Table<any>; // For personal estimates
     reservations!: Table<Reservation>;
     categories!: Table<Category>;
@@ -115,7 +106,7 @@ export class MongolGalaxyDB extends Dexie {
         super('MongolGalaxyDB');
         this.version(8).stores({
             adminQuotes: 'id, type, status, createdAt',
-            myBusinessEstimates: 'id, status',
+
             myEstimates: 'id, status',
             reservations: 'id, status, type',
             categories: 'id, order, isActive, type',

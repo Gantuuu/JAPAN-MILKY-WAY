@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabaseClient';
+
 import { optimizeImage } from './imageOptimizer';
 
 // 전체 사이트의 이미지 용도별 프리셋 정의

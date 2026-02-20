@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api'; // Changed from supabase
 import { SEO } from '../components/seo/SEO';
 import { BottomNav } from '../components/layout/BottomNav';
 
@@ -28,35 +28,38 @@ export const TravelGuide: React.FC = () => {
     useEffect(() => {
         const fetchData = async () => {
             // Fetch magazine categories
-            const { data: catData } = await supabase
-                .from('categories')
-                .select('*')
-                .eq('type', 'magazine')
-                .eq('is_active', true)
-                .order('order');
-            if (catData) {
-                setMagazineCategories(catData.map((c: any) => c.name));
-            }
+            try {
+                const catData = await api.categories.list();
+                if (Array.isArray(catData)) {
+                    const magazineCats = catData
+                        .filter((c: any) => c.type === 'magazine' && (c.is_active ?? true))
+                        .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
+                        .map((c: any) => c.name);
+                    setMagazineCategories(magazineCats);
+                }
 
-            // Fetch magazines
-            const { data: magData } = await supabase
-                .from('magazines')
-                .select('*')
-                .eq('is_active', true)
-                .order('order');
-            if (magData) {
-                setMagazines(magData.map((m: any) => ({
-                    id: m.id,
-                    title: m.title,
-                    description: m.description,
-                    content: m.content,
-                    category: m.category,
-                    image: m.image,
-                    tag: m.tag,
-                    isFeatured: m.is_featured,
-                    isActive: m.is_active,
-                    order: m.order
-                })));
+                // Fetch magazines
+                const magData = await api.magazines.list();
+                if (Array.isArray(magData)) {
+                    setMagazines(magData
+                        .filter((m: any) => m.is_active ?? true)
+                        .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
+                        .map((m: any) => ({
+                            id: m.id,
+                            title: m.title,
+                            description: m.description,
+                            content: m.content,
+                            category: m.category,
+                            image: m.image,
+                            tag: m.tag,
+                            isFeatured: m.is_featured,
+                            isActive: m.is_active,
+                            order: m.order
+                        }))
+                    );
+                }
+            } catch (error) {
+                console.error('Error fetching travel guide data:', error);
             }
         };
         fetchData();

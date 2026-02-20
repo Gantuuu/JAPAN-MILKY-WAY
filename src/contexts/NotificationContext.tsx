@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api'; // Changed from supabase
 
 export interface Notification {
     id: string;
@@ -27,18 +27,14 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const fetchNotifications = async () => {
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
+            const me = await api.auth.me();
+            if (!me) {
                 setNotifications([]);
                 setLoading(false);
                 return;
             }
 
-            const { data } = await supabase
-                .from('notifications')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false });
+            const data = await api.notifications.list();
 
             if (data) {
                 setNotifications(data);
@@ -51,15 +47,19 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
 
     useEffect(() => {
-        let subscription: any;
+        // let subscription: any;
 
         const setupRealtime = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+            // const { data: { user } } = await supabase.auth.getUser();
+            // if (!user) return;
+            const me = await api.auth.me();
+            if (!me) return;
 
             // Initial fetch
             fetchNotifications();
 
+            // Realtime Disabled for API migration
+            /*
             // Setup Realtime subscription
             subscription = supabase
                 .channel('public:notifications')
@@ -82,25 +82,24 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                     }
                 )
                 .subscribe();
+            */
         };
 
         setupRealtime();
 
-        return () => {
-            if (subscription) supabase.removeChannel(subscription);
-        };
+        // return () => {
+        //     if (subscription) supabase.removeChannel(subscription);
+        // };
+        return () => { };
     }, []);
 
     const markAsRead = async (id: string) => {
         // Optimistic update
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
 
-        const { error } = await supabase
-            .from('notifications')
-            .update({ is_read: true })
-            .eq('id', id);
-
-        if (error) {
+        try {
+            await api.notifications.update(id, { is_read: true });
+        } catch (error) {
             console.error('Error marking as read:', error);
             // Revert on error (optional)
         }
@@ -110,16 +109,22 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         // Optimistic update
         setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
 
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        try {
+            const me = await api.auth.me();
+            if (!me) return;
 
-        const { error } = await supabase
-            .from('notifications')
-            .update({ is_read: true })
-            .eq('user_id', user.id)
-            .eq('is_read', false);
+            // Assuming there is a bulk update or we iterate? 
+            // Or maybe passing special ID/flag to update endpoint?
+            // Since api.notifications.update takes ID, we technically need a bulk endpoint or iterate.
+            // For now, let's just use a loop or if backend supports 'all'.
+            // I'll implementation loop for safety, or check if API has bulk.
+            // api.ts doesn't show bulk mark read.
+            // I'll just iterate for now or assuming backend 'update' can handle it? No.
+            // Let's iterate client side for now to be safe, or just fire and forget.
+            const unread = notifications.filter(n => !n.is_read);
+            await Promise.all(unread.map(n => api.notifications.update(n.id, { is_read: true })));
 
-        if (error) {
+        } catch (error) {
             console.error('Error marking all as read:', error);
         }
     };

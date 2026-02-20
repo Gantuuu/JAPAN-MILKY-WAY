@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api'; // Changed from supabase
 import { BottomNav } from '../components/layout/BottomNav';
 
 export const MyTravelMates: React.FC = () => {
@@ -11,36 +11,40 @@ export const MyTravelMates: React.FC = () => {
     useEffect(() => {
         const fetchMyPosts = async () => {
             setLoading(true);
-            const { data: { user } } = await supabase.auth.getUser();
+            try {
+                const me = await api.auth.me();
 
-            if (!user) {
-                // If not logged in, maybe show empty or redirect
-                setLoading(false);
-                return;
-            }
+                if (!me) {
+                    setLoading(false);
+                    return;
+                }
 
-            const { data, error } = await supabase
-                .from('travel_mates')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false });
+                const data = await api.travelMates.list();
 
-            if (data) {
-                const mappedPosts = data.map(post => ({
-                    ...post,
-                    startDate: post.start_date,
-                    endDate: post.end_date,
-                    recruitCount: post.recruit_count,
-                    ageGroups: post.age_groups,
-                    authorImage: post.author_image,
-                    authorName: post.author_name,
-                    authorInfo: post.author_info,
-                    createdAt: post.created_at,
-                    updatedAt: post.updated_at,
-                    views: post.view_count,
-                    comments: post.comment_count
-                }));
-                setMyPosts(mappedPosts);
+                if (data) {
+                    // Client-side filter
+                    const myPosts = data.filter((p: any) => p.user_id === me.id);
+                    // Sort desc
+                    myPosts.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+                    const mappedPosts = myPosts.map((post: any) => ({
+                        ...post,
+                        startDate: post.start_date,
+                        endDate: post.end_date,
+                        recruitCount: post.recruit_count,
+                        ageGroups: post.age_groups,
+                        authorImage: post.author_image,
+                        authorName: post.author_name,
+                        authorInfo: post.author_info,
+                        createdAt: post.created_at,
+                        updatedAt: post.updated_at,
+                        views: post.view_count,
+                        comments: post.comment_count
+                    }));
+                    setMyPosts(mappedPosts);
+                }
+            } catch (error) {
+                console.error("Error fetching my travel mates:", error);
             }
             setLoading(false);
         };
@@ -65,25 +69,21 @@ export const MyTravelMates: React.FC = () => {
     const handleToggleStatus = async (id: string, currentStatus: string) => {
         const newStatus = currentStatus === 'recruiting' ? 'closed' : 'recruiting';
 
-        const { error } = await supabase
-            .from('travel_mates')
-            .update({ status: newStatus, updated_at: new Date().toISOString() })
-            .eq('id', id);
-
-        if (!error) {
+        try {
+            await api.travelMates.update(id, { status: newStatus });
             setMyPosts(prev => prev.map(p => p.id === id ? { ...p, status: newStatus } : p));
+        } catch (error) {
+            console.error("Error updating status:", error);
         }
     };
 
     const handleDelete = async (id: string) => {
         if (confirm('이 게시물을 삭제하시겠습니까?')) {
-            const { error } = await supabase
-                .from('travel_mates')
-                .delete()
-                .eq('id', id);
-
-            if (!error) {
+            try {
+                await api.travelMates.delete(id);
                 setMyPosts(prev => prev.filter(p => p.id !== id));
+            } catch (error) {
+                console.error("Error deleting post:", error);
             }
         }
     };

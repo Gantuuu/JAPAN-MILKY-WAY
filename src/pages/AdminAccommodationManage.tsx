@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminSidebar } from '../components/admin/AdminSidebar';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { uploadImage } from '../utils/upload';
 
 interface Accommodation {
@@ -30,31 +30,33 @@ export const AdminAccommodationManage: React.FC = () => {
         facilities: []
     });
 
-    // Load accommodations from Supabase
+    // Load accommodations from API
     useEffect(() => {
         const fetchAccommodations = async () => {
-            const { data } = await supabase.from('accommodations').select('*').order('created_at', { ascending: false });
-            if (data) {
-                setAccommodations(data.map((a: any) => ({
-                    id: a.id,
-                    name: a.name,
-                    images: a.images || [],
-                    description: a.description,
-                    type: a.type,
-                    location: a.location,
-                    facilities: a.facilities || [],
-                    createdAt: a.created_at
-                })));
+            try {
+                const data = await api.accommodations.list();
+                if (Array.isArray(data)) {
+                    setAccommodations(data.map((a: any) => ({
+                        id: a.id,
+                        name: a.name,
+                        images: typeof a.images === 'string' ? JSON.parse(a.images || '[]') : (a.images || []),
+                        description: a.description,
+                        type: a.type,
+                        location: a.location,
+                        facilities: typeof a.facilities === 'string' ? JSON.parse(a.facilities || '[]') : (a.facilities || []),
+                        createdAt: a.created_at || a.createdAt
+                    })));
+                }
+            } catch (error) {
+                console.error('Error fetching accommodations:', error);
             }
         };
         fetchAccommodations();
     }, []);
 
-    // Save accommodations to Supabase
+    // Save accommodations via API
     const saveAccommodations = async (updated: Accommodation[]) => {
         try {
-            // Delete all and re-insert
-            await supabase.from('accommodations').delete().neq('id', '');
             const inserts = updated.map(a => ({
                 id: a.id,
                 name: a.name,
@@ -65,9 +67,7 @@ export const AdminAccommodationManage: React.FC = () => {
                 facilities: a.facilities,
                 created_at: a.createdAt
             }));
-            if (inserts.length > 0) {
-                await supabase.from('accommodations').insert(inserts);
-            }
+            await api.accommodations.save(inserts);
             setAccommodations(updated);
             return true;
         } catch (e) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '../../lib/supabaseClient';
+import { api } from '../../lib/api';
 
 interface AuthGuardProps {
     children: React.ReactNode;
@@ -15,9 +15,9 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     useEffect(() => {
         const checkAuth = async () => {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
+                const user = await api.auth.me();
 
-                if (!session) {
+                if (!user) {
                     // Redirect to login, saving the attempted URL
                     navigate('/login', { state: { from: location.pathname } });
                     return;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { optimizeImage } from '../utils/imageOptimizer';
 import { BottomNav } from '../components/layout/BottomNav';
 
@@ -20,43 +20,43 @@ export const ReviewDetail: React.FC = () => {
 
     useEffect(() => {
         const checkUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                setCurrentUser({
-                    id: user.id,
-                    name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || '여행자',
-                    image: user.user_metadata?.avatar_url
-                });
-            }
+            try {
+                const me = await api.auth.me();
+                if (me) {
+                    setCurrentUser({
+                        id: me.id,
+                        name: me.user_metadata?.full_name || me.name || me.email?.split('@')[0] || '여행자',
+                        image: me.user_metadata?.avatar_url || me.avatar_url
+                    });
+                }
+            } catch (e) { /* ignore */ }
         };
         checkUser();
 
         const fetchReview = async () => {
             if (!id) return;
             setLoading(true);
-            const { data, error } = await supabase
-                .from('reviews')
-                .select('*')
-                .eq('id', id)
-                .single();
+            try {
+                const data = await api.reviews.get(id);
 
-            if (data) {
-                setReview({
-                    id: data.id,
-                    author: data.author_name,
-                    date: data.created_at ? data.created_at.substring(0, 10) : '',
-                    rating: data.rating,
-                    title: data.title,
-                    productName: data.product_name,
-                    productId: data.product_id,
-                    content: data.content,
-                    images: data.images || [],
-                    userImage: data.user_image,
-                    comments: data.comments || [],
-                    helpfulCount: data.helpful_count || 0,
-                    helpfulUsers: data.helpful_users || []
-                });
-            } else {
+                if (data) {
+                    setReview({
+                        id: data.id,
+                        author: data.author_name,
+                        date: data.created_at ? data.created_at.substring(0, 10) : '',
+                        rating: data.rating,
+                        title: data.title,
+                        productName: data.product_name,
+                        productId: data.product_id,
+                        content: data.content,
+                        images: data.images || [],
+                        userImage: data.user_image,
+                        comments: data.comments || [],
+                        helpfulCount: data.helpful_count || 0,
+                        helpfulUsers: data.helpful_users || []
+                    });
+                }
+            } catch (error) {
                 console.error("Error fetching review:", error);
             }
             setLoading(false);
@@ -84,12 +84,7 @@ export const ReviewDetail: React.FC = () => {
 
             const updatedComments = [...(review.comments || []), comment];
 
-            const { error } = await supabase
-                .from('reviews')
-                .update({ comments: updatedComments })
-                .eq('id', id);
-
-            if (error) throw error;
+            await api.reviews.update(id, { comments: updatedComments });
 
             setReview({ ...review, comments: updatedComments });
             setNewComment('');
@@ -120,12 +115,7 @@ export const ReviewDetail: React.FC = () => {
 
             const updatedComments = [...(review.comments || []), reply];
 
-            const { error } = await supabase
-                .from('reviews')
-                .update({ comments: updatedComments })
-                .eq('id', id);
-
-            if (error) throw error;
+            await api.reviews.update(id, { comments: updatedComments });
 
             setReview({ ...review, comments: updatedComments });
             setReplyContent('');
@@ -157,15 +147,10 @@ export const ReviewDetail: React.FC = () => {
                 updatedCount += 1;
             }
 
-            const { error } = await supabase
-                .from('reviews')
-                .update({
-                    helpful_count: updatedCount,
-                    helpful_users: updatedUsers
-                })
-                .eq('id', id);
-
-            if (error) throw error;
+            await api.reviews.update(id, {
+                helpful_count: updatedCount,
+                helpful_users: updatedUsers
+            });
 
             setReview({
                 ...review,

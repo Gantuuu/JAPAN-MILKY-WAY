@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { uploadImage } from '../utils/upload';
 import { AdminSidebar } from '../components/admin/AdminSidebar';
 import { SimpleSlider } from '../components/ui/SimpleSlider';
@@ -264,44 +264,46 @@ export const AdminMagazineManage: React.FC = () => {
     }), [handleImageHandler]);
 
 
-    // Fetch data from Supabase
+    // Fetch data from API
     const fetchMagazines = async () => {
-        const { data } = await supabase
-            .from('magazines')
-            .select('*')
-            .order('order');
-        if (data) {
-            setMagazines(data.map((m: any) => ({
-                id: m.id,
-                title: m.title,
-                description: m.description,
-                content: m.content,
-                category: m.category,
-                image: m.image,
-                tag: m.tag,
-                isFeatured: m.is_featured,
-                isActive: m.is_active,
-                order: m.order,
-                createdAt: m.created_at,
-                updatedAt: m.updated_at
-            })));
+        try {
+            const data = await api.magazines.list();
+            if (Array.isArray(data)) {
+                setMagazines(data.map((m: any) => ({
+                    id: m.id,
+                    title: m.title,
+                    description: m.description,
+                    content: m.content,
+                    category: m.category,
+                    image: m.image,
+                    tag: m.tag,
+                    isFeatured: m.is_featured,
+                    isActive: m.is_active,
+                    order: m.order,
+                    createdAt: m.created_at,
+                    updatedAt: m.updated_at
+                })));
+            }
+        } catch (error) {
+            console.error('Error fetching magazines:', error);
         }
     };
 
     const fetchCategories = async () => {
-        const { data } = await supabase
-            .from('categories')
-            .select('*')
-            .eq('type', 'magazine')
-            .order('order');
-        if (data) {
-            setMagazineCategories(data.map((c: any) => ({
-                id: c.id,
-                name: c.name,
-                order: c.order,
-                isActive: c.is_active,
-                type: c.type
-            })));
+        try {
+            const data = await api.categories.list();
+            if (Array.isArray(data)) {
+                const magazineCats = data.filter((c: any) => c.type === 'magazine');
+                setMagazineCategories(magazineCats.map((c: any) => ({
+                    id: c.id,
+                    name: c.name,
+                    order: c.order,
+                    isActive: c.is_active,
+                    type: c.type
+                })));
+            }
+        } catch (error) {
+            console.error('Error fetching categories:', error);
         }
     };
 
@@ -338,8 +340,8 @@ export const AdminMagazineManage: React.FC = () => {
         const currentOrder = currentMagazine.order;
         const targetOrder = targetMagazine.order;
 
-        await supabase.from('magazines').update({ order: targetOrder }).eq('id', currentMagazine.id);
-        await supabase.from('magazines').update({ order: currentOrder }).eq('id', targetMagazine.id);
+        await api.magazines.update(currentMagazine.id, { order: targetOrder });
+        await api.magazines.update(targetMagazine.id, { order: currentOrder });
         fetchMagazines();
     };
 
@@ -393,7 +395,7 @@ export const AdminMagazineManage: React.FC = () => {
     const handleDelete = async (id: string) => {
         if (window.confirm('정말 삭제하시겠습니까?')) {
             try {
-                await supabase.from('magazines').delete().eq('id', id);
+                await api.magazines.delete(id);
                 fetchMagazines();
             } catch (error) {
                 console.error('Error deleting magazine:', error);
@@ -426,31 +428,22 @@ export const AdminMagazineManage: React.FC = () => {
                 updated_at: new Date().toISOString()
             };
 
-            let error;
             if (editingMagazine) {
-                const result = await supabase.from('magazines').update(magazineData).eq('id', editingMagazine.id);
-                error = result.error;
+                await api.magazines.update(editingMagazine.id, magazineData);
             } else {
-                const result = await supabase.from('magazines').insert({
+                await api.magazines.create({
                     ...magazineData,
                     id: crypto.randomUUID(),
                     created_at: new Date().toISOString()
                 });
-                error = result.error;
-            }
-
-            if (error) {
-                console.error('Supabase error:', error);
-                alert(`저장 실패: ${error.message} `);
-                return;
             }
 
             alert('저장되었습니다!');
             fetchMagazines();
             resetForm();
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error saving magazine:', error);
-            alert('저장 중 오류가 발생했습니다.');
+            alert(`저장 실패: ${error.message || '저장 중 오류가 발생했습니다.'}`);
         }
     };
 
@@ -468,13 +461,13 @@ export const AdminMagazineManage: React.FC = () => {
             return;
         }
         if (editingCategory) {
-            await supabase.from('categories').update({
+            await api.categories.update(editingCategory.id, {
                 name: categoryForm.name,
                 is_active: categoryForm.isActive
-            }).eq('id', editingCategory.id);
+            });
         } else {
             const maxOrder = magazineCategories?.length ? Math.max(...magazineCategories.map(c => c.order)) : 0;
-            await supabase.from('categories').insert({
+            await api.categories.create({
                 id: `mag-cat-${Date.now()}`,
                 name: categoryForm.name,
                 is_active: categoryForm.isActive,
@@ -497,13 +490,13 @@ export const AdminMagazineManage: React.FC = () => {
             return;
         }
         if (confirm('이 카테고리를 삭제하시겠습니까?')) {
-            await supabase.from('categories').delete().eq('id', cat.id);
+            await api.categories.delete(cat.id);
             fetchCategories();
         }
     };
 
     const handleToggleCategoryActive = async (cat: MagazineCategory) => {
-        await supabase.from('categories').update({ is_active: !cat.isActive }).eq('id', cat.id);
+        await api.categories.update(cat.id, { is_active: !cat.isActive });
         fetchCategories();
     };
 
@@ -515,8 +508,8 @@ export const AdminMagazineManage: React.FC = () => {
         const current = magazineCategories[index];
         const target = magazineCategories[targetIndex];
 
-        await supabase.from('categories').update({ order: target.order }).eq('id', current.id);
-        await supabase.from('categories').update({ order: current.order }).eq('id', target.id);
+        await api.categories.update(current.id, { order: target.order });
+        await api.categories.update(target.id, { order: current.order });
         fetchCategories();
     };
 

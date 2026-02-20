@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api'; // Changed from supabase
 import { optimizeImage } from '../utils/imageOptimizer';
 import { useTranslation } from 'react-i18next';
 
@@ -22,22 +22,16 @@ export const Wishlist: React.FC = () => {
 
     const fetchWishlist = async () => {
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
+            const me = await api.auth.me();
+            if (!me) {
                 setLoading(false);
                 return;
             }
 
-            const { data, error } = await supabase
-                .from('wishlist')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
+            const data = await api.wishlist.list();
 
             if (data) {
-                const mapped: WishlistItem[] = data.map(item => ({
+                const mapped: WishlistItem[] = data.map((item: any) => ({
                     id: item.id,
                     productId: item.product_id,
                     productName: item.title,
@@ -46,6 +40,8 @@ export const Wishlist: React.FC = () => {
                     price: item.price,
                     addedAt: item.created_at
                 }));
+                // Client-side sort if API doesn't support it yet
+                mapped.sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
                 setWishlist(mapped);
             }
         } catch (error) {
@@ -61,12 +57,7 @@ export const Wishlist: React.FC = () => {
 
     const handleRemoveFromWishlist = async (wishlistId: string) => {
         try {
-            const { error } = await supabase
-                .from('wishlist')
-                .delete()
-                .eq('id', wishlistId);
-
-            if (error) throw error;
+            await api.wishlist.remove(wishlistId);
 
             // UI optimistic update or refetch
             setWishlist(prev => prev.filter(item => item.id !== wishlistId));

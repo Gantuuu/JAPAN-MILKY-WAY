@@ -7,6 +7,7 @@ export const users = sqliteTable('users', {
     name: text('name'),
     role: text('role').default('user'), // 'admin' | 'user'
     avatarUrl: text('avatar_url'),
+    passwordHash: text('password_hash'), // For admin email/password login
 });
 
 export const sessions = sqliteTable('sessions', {

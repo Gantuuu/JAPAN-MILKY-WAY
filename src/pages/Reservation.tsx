@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { TourProduct } from '../types/product';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 
 export const Reservation: React.FC = () => {
     const navigate = useNavigate();
@@ -33,65 +33,62 @@ export const Reservation: React.FC = () => {
     useEffect(() => {
         const loadProduct = async () => {
             if (!id) return;
-            // Fetch from Supabase
-            const { data, error } = await supabase
-                .from('products')
-                .select('*')
-                .eq('id', id)
-                .single();
+            try {
+                const data = await api.products.get(id);
 
-            if (data) {
-                const found: TourProduct = {
-                    id: data.id,
-                    name: data.name,
-                    price: data.price,
-                    originalPrice: data.original_price,
-                    duration: data.duration,
-                    category: data.category,
-                    mainImages: data.main_images || [],
-                    isPopular: data.is_popular,
-                    tags: data.tags || [],
-                    description: data.description,
-                    galleryImages: data.gallery_images || [],
-                    detailImages: data.detail_images || [],
-                    itineraryImages: data.itinerary_images || [],
-                    detailSlides: data.detail_slides || [],
-                    status: data.status,
-                    isFeatured: data.is_featured,
-                    highlights: data.highlights || [],
-                    included: data.included || [],
-                    excluded: data.excluded || [],
-                    pricingOptions: data.pricing_options || [],
-                    accommodationOptions: data.accommodation_options || [],
-                    vehicleOptions: data.vehicle_options || [],
-                    viewCount: data.view_count || 0,
-                    bookingCount: data.booking_count || 0,
-                    createdAt: data.created_at,
-                    updatedAt: data.updated_at
-                };
+                if (data) {
+                    const found: TourProduct = {
+                        id: data.id,
+                        name: data.name,
+                        price: data.price,
+                        originalPrice: data.original_price,
+                        duration: data.duration,
+                        category: data.category,
+                        mainImages: data.main_images || [],
+                        isPopular: data.is_popular,
+                        tags: data.tags || [],
+                        description: data.description,
+                        galleryImages: data.gallery_images || [],
+                        detailImages: data.detail_images || [],
+                        itineraryImages: data.itinerary_images || [],
+                        detailSlides: data.detail_slides || [],
+                        status: data.status,
+                        isFeatured: data.is_featured,
+                        highlights: data.highlights || [],
+                        included: data.included || [],
+                        excluded: data.excluded || [],
+                        pricingOptions: data.pricing_options || [],
+                        accommodationOptions: data.accommodation_options || [],
+                        vehicleOptions: data.vehicle_options || [],
+                        viewCount: data.view_count || 0,
+                        bookingCount: data.booking_count || 0,
+                        createdAt: data.created_at,
+                        updatedAt: data.updated_at
+                    };
 
-                setProduct(found);
-                // Set defaults
-                if (found.accommodationOptions && found.accommodationOptions.length > 0) {
-                    const def = found.accommodationOptions.find(o => o.isDefault) || found.accommodationOptions[0];
-                    setSelectedAccomId(def.id);
+                    setProduct(found);
+                    // Set defaults
+                    if (found.accommodationOptions && found.accommodationOptions.length > 0) {
+                        const def = found.accommodationOptions.find(o => o.isDefault) || found.accommodationOptions[0];
+                        setSelectedAccomId(def.id);
+                    }
+                    if (found.vehicleOptions && found.vehicleOptions.length > 0) {
+                        const def = found.vehicleOptions.find(o => o.isDefault) || found.vehicleOptions[0];
+                        setSelectedVehicleId(def.id);
+                    }
+                    // Set initial people count to first pricing tier
+                    if (found.pricingOptions && found.pricingOptions.length > 0) {
+                        const sorted = [...found.pricingOptions].sort((a, b) => a.people - b.people);
+                        setTotalPeople(sorted[0].people);
+                    }
+                } catch (error) {
+                    console.error('Product not found or error:', error);
+                } finally {
+                    setLoading(false);
                 }
-                if (found.vehicleOptions && found.vehicleOptions.length > 0) {
-                    const def = found.vehicleOptions.find(o => o.isDefault) || found.vehicleOptions[0];
-                    setSelectedVehicleId(def.id);
-                }
-                // Set initial people count to first pricing tier
-                if (found.pricingOptions && found.pricingOptions.length > 0) {
-                    const sorted = [...found.pricingOptions].sort((a, b) => a.people - b.people);
-                    setTotalPeople(sorted[0].people);
-                }
-            } else {
-                console.error('Product not found or error:', error);
-            }
-            setLoading(false);
-        };
-        loadProduct();
-    }, [id]);
+            };
+            loadProduct();
+        }, [id]);
 
     // Calculation Logic
     // Calculation Logic

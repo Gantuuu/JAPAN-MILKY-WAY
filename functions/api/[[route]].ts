@@ -4,21 +4,39 @@ import { handle } from 'hono/cloudflare-pages';
 const app = new Hono().basePath('/api');
 
 app.get('/', (c) => {
-    return c.json({ message: 'Hello from Hono on Cloudflare Pages!' });
+    return c.json({ message: 'Milkyway Japan API' });
 });
 
-// TODO: Add other routes
-
+// Import route modules
 import products from './products';
 import reservations from './reservations';
 import auth from './auth';
 import emailNotifications from './notifications/email';
 import notifications from './notifications/index';
+import banners from './banners';
+import settings from './settings';
+import faqs from './faqs';
+import reviews from './reviews';
+import magazines from './magazines';
+import accommodations from './accommodations';
+import categories from './categories';
+import guides from './guides';
+import quotes from './quotes';
 
-app.route('/api/products', products);
-app.route('/api/reservations', reservations);
-app.route('/api/auth', auth);
-app.route('/api/notifications/email', emailNotifications);
-app.route('/api/notifications', notifications);
+// Register routes
+app.route('/products', products);
+app.route('/reservations', reservations);
+app.route('/auth', auth);
+app.route('/notifications/email', emailNotifications);
+app.route('/notifications', notifications);
+app.route('/banners', banners);
+app.route('/settings', settings);
+app.route('/faqs', faqs);
+app.route('/reviews', reviews);
+app.route('/magazines', magazines);
+app.route('/accommodations', accommodations);
+app.route('/categories', categories);
+app.route('/guides', guides);
+app.route('/quotes', quotes);
 
 export const onRequest = handle(app);

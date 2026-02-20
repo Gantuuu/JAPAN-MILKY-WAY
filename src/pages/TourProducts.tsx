@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FixedSizeList as List } from 'react-window';
 import { AutoSizer } from 'react-virtualized-auto-sizer';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { SEO } from '../components/seo/SEO';
 import { optimizeImage } from '../utils/imageOptimizer';
 import { ProductSkeleton } from '../components/skeletons/ProductSkeleton';
@@ -40,23 +40,22 @@ export const TourProducts: React.FC = () => {
     const { data: categories = [], isLoading: isCategoriesLoading } = useQuery({
         queryKey: ['categories'],
         queryFn: async () => {
-            const { data } = await supabase
-                .from('categories')
-                .select('*')
-                .or('type.eq.product,type.is.null')
-                .order('order');
-
-            if (!data || data.length === 0) return [];
-
-            return data.map((c: any) => ({
-                id: c.id,
-                icon: c.icon,
-                name: c.name,
-                description: c.description,
-                isActive: c.is_active,
-                order: c.order,
-                type: c.type || 'product'
-            }));
+            try {
+                const data = await api.categories.list();
+                if (!Array.isArray(data) || data.length === 0) return [];
+                return data.filter((c: any) => c.type === 'product' || !c.type).map((c: any) => ({
+                    id: c.id,
+                    icon: c.icon,
+                    name: c.name,
+                    description: c.description,
+                    isActive: c.is_active,
+                    order: c.order,
+                    type: c.type || 'product'
+                }));
+            } catch (error) {
+                console.error('Error fetching categories:', error);
+                return [];
+            }
         },
         staleTime: 1000 * 60 * 60, // 1 hour
     });
@@ -65,19 +64,23 @@ export const TourProducts: React.FC = () => {
     const { data: eventBanners = [], isLoading: isEventBannersLoading } = useQuery({
         queryKey: ['eventBanners'],
         queryFn: async () => {
-            const { data } = await supabase.from('event_banners').select('*').order('order');
-            if (!data || data.length === 0) return [];
-
-            return data.map((e: any) => ({
-                id: e.id,
-                image: e.image,
-                backgroundColor: e.background_color || '#0F766E',
-                tag: e.tag,
-                title: e.title,
-                icon: e.icon,
-                link: e.link,
-                location: e.location
-            }));
+            try {
+                const data = await api.eventBanners.list();
+                if (!Array.isArray(data) || data.length === 0) return [];
+                return data.map((e: any) => ({
+                    id: e.id,
+                    image: e.image,
+                    backgroundColor: e.background_color || '#0F766E',
+                    tag: e.tag,
+                    title: e.title,
+                    icon: e.icon,
+                    link: e.link,
+                    location: e.location
+                }));
+            } catch (error) {
+                console.error('Error fetching event banners:', error);
+                return [];
+            }
         },
         staleTime: 1000 * 60 * 30, // 30 minutes
     });
@@ -86,42 +89,37 @@ export const TourProducts: React.FC = () => {
     const { data: products = [], isLoading: isProductsLoading } = useQuery({
         queryKey: ['products'],
         queryFn: async () => {
-            const { data, error } = await supabase
-                .from('products')
-                .select('*')
-                .eq('status', 'active');
-
-            if (error) {
+            try {
+                const data = await api.products.list();
+                if (!Array.isArray(data)) return [];
+                return data.filter((item: any) => item.status === 'active').map((item: any) => ({
+                    id: item.id,
+                    name: item.name,
+                    price: item.price,
+                    originalPrice: item.original_price,
+                    duration: item.duration,
+                    category: item.category,
+                    mainImages: item.main_images || [],
+                    isPopular: item.is_popular,
+                    tags: item.tags || [],
+                    description: item.description,
+                    galleryImages: item.gallery_images || [],
+                    detailImages: item.detail_images || [],
+                    itineraryImages: item.itinerary_images || [],
+                    status: item.status,
+                    isFeatured: item.is_featured,
+                    highlights: item.highlights || [],
+                    included: item.included || [],
+                    excluded: item.excluded || [],
+                    viewCount: item.view_count,
+                    bookingCount: item.booking_count,
+                    createdAt: item.created_at,
+                    updatedAt: item.updated_at
+                }));
+            } catch (error) {
                 console.error('Error fetching products:', error);
-                throw error;
+                return [];
             }
-
-            if (!data) return [];
-
-            return data.map(item => ({
-                id: item.id,
-                name: item.name,
-                price: item.price,
-                originalPrice: item.original_price,
-                duration: item.duration,
-                category: item.category,
-                mainImages: item.main_images || [],
-                isPopular: item.is_popular,
-                tags: item.tags || [],
-                description: item.description,
-                galleryImages: item.gallery_images || [],
-                detailImages: item.detail_images || [],
-                itineraryImages: item.itinerary_images || [],
-                status: item.status,
-                isFeatured: item.is_featured,
-                highlights: item.highlights || [],
-                included: item.included || [],
-                excluded: item.excluded || [],
-                viewCount: item.view_count,
-                bookingCount: item.booking_count,
-                createdAt: item.created_at,
-                updatedAt: item.updated_at
-            }));
         },
         staleTime: 1000 * 60 * 5, // 5 minutes
     });

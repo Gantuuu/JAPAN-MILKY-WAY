@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { useUser } from '../contexts/UserContext';
 import { uploadImage } from '../utils/upload';
 
@@ -18,28 +18,30 @@ export const ReviewWrite: React.FC = () => {
 
     useEffect(() => {
         const fetchReservations = async () => {
-            // For testing: we can't filter by user yet if we don't have auth ID properly in DB, 
-            // but schema has user_id.
-            // If user is not logged in, we shouldn't show anything anyway.
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+            try {
+                const me = await api.auth.me();
+                if (!me) return;
 
-            const { data, error } = await supabase
-                .from('reservations')
-                .select('*')
-                .eq('user_id', user.id)
-                .eq('status', 'completed')
-                .order('start_date', { ascending: false });
+                const data = await api.reservations.list();
 
-            if (data) {
-                // Map to frontend format
-                const mapped = data.map((r: any) => ({
-                    id: r.id,
-                    productName: r.product_name,
-                    startDate: r.start_date,
-                    endDate: r.end_date,
-                }));
-                setCompletedReservations(mapped);
+                if (data) {
+                    // Filter for user's completed reservations
+                    const myCompleted = data.filter((r: any) => r.user_id === me.id && r.status === 'completed');
+
+                    // Sort by start_date desc
+                    myCompleted.sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+
+                    // Map to frontend format
+                    const mapped = myCompleted.map((r: any) => ({
+                        id: r.id,
+                        productName: r.product_name,
+                        startDate: r.start_date,
+                        endDate: r.end_date,
+                    }));
+                    setCompletedReservations(mapped);
+                }
+            } catch (error) {
+                console.error('Failed to fetch reservations:', error);
             }
         };
         fetchReservations();
@@ -77,33 +79,31 @@ export const ReviewWrite: React.FC = () => {
         if (!content.trim() || !selectedReservation) return;
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
+            const me = await api.auth.me();
+            if (!me) {
                 alert('로그인이 필요합니다.');
                 return;
             }
 
-            const { error } = await supabase.from('reviews').insert({
-                user_id: user.id,
-                author_name: user.user_metadata.full_name || '익명',
+            // Using api.reviews.create
+            // Note: ReviewWrite assumed user.user_metadata.full_name. api.auth.me() returns { id, email, full_name (maybe?), name? }
+            // Let's assume me object has necessary fields or fallback.
+            await api.reviews.create({
+                user_id: me.id,
+                author_name: me.user_metadata?.full_name || me.name || me.email?.split('@')[0] || '익명',
                 visit_date: selectedReservation.startDate.slice(0, 7) + ' 방문',
                 rating: rating,
                 product_name: selectedReservation.productName,
                 title: `${selectedReservation.productName} 후기`,
                 content: content,
                 images: images,
-                user_image: user.user_metadata.avatar_url
+                user_image: me.user_metadata?.avatar_url || me.avatar_url
             });
 
-            if (error) {
-                console.error('Failed to save review:', error);
-                alert('리뷰 저장에 실패했습니다: ' + error.message);
-            } else {
-                setIsSuccessModalOpen(true);
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            alert('오류가 발생했습니다.');
+            setIsSuccessModalOpen(true);
+        } catch (error: any) {
+            console.error('Failed to save review:', error);
+            alert('리뷰 저장에 실패했습니다: ' + (error.message || 'Unknown error'));
         }
     };
 

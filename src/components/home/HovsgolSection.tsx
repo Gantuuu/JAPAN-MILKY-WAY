@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabaseClient';
+import { api } from '../../lib/api';
 import { getOptimizedImageUrl } from '../../utils/supabaseImage';
 
 export const HovsgolSection: React.FC = () => {
@@ -9,20 +9,25 @@ export const HovsgolSection: React.FC = () => {
 
     React.useEffect(() => {
         const fetchProducts = async () => {
-            const { data } = await supabase.from('products').select('*').eq('category', '홉스굴').limit(3);
-            if (data) {
-                setProducts(data.map((p: any) => ({
-                    id: p.id,
-                    name: p.name,
-                    category: p.category,
-                    price: p.price,
-                    mainImages: p.main_images || [],
-                    duration: p.duration,
-                    highlights: p.highlights || [],
-                    isPopular: p.is_popular,
-                    originalPrice: p.original_price,
-                    tags: p.tags || []
-                })));
+            try {
+                const data = await api.products.list();
+                if (Array.isArray(data)) {
+                    const khuvsgulData = data.filter((p: any) => p.category === '홉스굴').slice(0, 3);
+                    setProducts(khuvsgulData.map((p: any) => ({
+                        id: p.id,
+                        name: p.name,
+                        category: p.category,
+                        price: p.price,
+                        mainImages: p.main_images || [],
+                        duration: p.duration,
+                        highlights: p.highlights || [],
+                        isPopular: p.is_popular,
+                        originalPrice: p.original_price,
+                        tags: p.tags || []
+                    })));
+                }
+            } catch (error) {
+                console.error('Error fetching Khuvsgul products:', error);
             }
         };
         fetchProducts();

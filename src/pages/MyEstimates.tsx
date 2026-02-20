@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BottomNav } from '../components/layout/BottomNav';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 
 export const MyEstimates: React.FC = () => {
     const navigate = useNavigate();
@@ -10,27 +10,26 @@ export const MyEstimates: React.FC = () => {
 
     React.useEffect(() => {
         const fetchEstimates = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+            try {
+                const me = await api.auth.me();
+                if (!me) return;
 
-            const { data } = await supabase
-                .from('quotes')
-                .select('*')
-                .eq('user_id', user.id)
-                .in('type', ['personal', 'custom']) // Fetch personal/custom quotes
-                .order('created_at', { ascending: false });
-
-            if (data) {
-                setEstimates(data.map((e: any) => ({
-                    id: e.id,
-                    status: e.status === 'new' ? 'waiting' : e.status, // 'new' -> 'waiting' for user view
-                    statusLabel: e.status === 'new' ? '답변 대기' : e.status === 'answered' ? '답변 완료' : e.status === 'converted' ? '예약 전환' : '상담 중',
-                    title: `맞춤 견적 요청 (${e.destination || '몽골'})`,
-                    date: e.period,
-                    type: '맞춤여행', // Display text
-                    people: e.headcount,
-                    requestDate: new Date(e.created_at).toLocaleDateString('ko-KR')
-                })));
+                const data = await api.quotes.list();
+                if (Array.isArray(data)) {
+                    const myQuotes = data.filter((e: any) => e.user_id === me.id && (e.type === 'personal' || e.type === 'custom'));
+                    setEstimates(myQuotes.map((e: any) => ({
+                        id: e.id,
+                        status: e.status === 'new' ? 'waiting' : e.status,
+                        statusLabel: e.status === 'new' ? '답변 대기' : e.status === 'answered' ? '답변 완료' : e.status === 'converted' ? '예약 전환' : '상담 중',
+                        title: `맞춤 견적 요청 (${e.destination || '몽골'})`,
+                        date: e.period,
+                        type: '맞춤여행',
+                        people: e.headcount,
+                        requestDate: new Date(e.created_at).toLocaleDateString('ko-KR')
+                    })));
+                }
+            } catch (error) {
+                console.error('Error fetching estimates:', error);
             }
         };
         fetchEstimates();

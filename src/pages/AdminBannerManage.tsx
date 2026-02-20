@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { AdminSidebar } from '../components/admin/AdminSidebar';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { uploadImage } from '../utils/upload';
 
 interface Banner {
@@ -47,7 +47,7 @@ const PREDEFINED_LINKS = [
     { label: '맞춤견적', value: '/custom-estimate' },
     { label: '동행찾기', value: '/travel-mates' },
     { label: '마이페이지', value: '/profile' },
-    { label: '비즈니스', value: '/business-estimate' },
+
     { label: '여행가이드', value: '/travel-guide' },
 ];
 
@@ -74,7 +74,7 @@ const DEFAULT_LINKS: QuickLink[] = [
     { id: 'link-1', icon: 'grid_view', label: '여행상품', path: '/products' },
     { id: 'link-2', icon: 'receipt_long', label: '맞춤견적', path: '/custom-estimate' },
     { id: 'link-3', icon: 'groups', label: '동행찾기', path: '/travel-mates' },
-    { id: 'link-4', icon: 'business_center', label: '비즈니스', path: '/business-estimate' },
+
     { id: 'link-5', icon: 'auto_stories', label: '여행가이드', path: '/travel-guide' },
 ];
 
@@ -131,59 +131,31 @@ export const AdminBannerManage: React.FC = () => {
     const categoryFileInputRef = useRef<HTMLInputElement>(null);
     const [selectedId, setSelectedId] = useState<string | null>(null);
 
-    // Initial Load from Supabase
+    // Initial Load from API
     useEffect(() => {
         const fetchData = async () => {
             try {
-                // Fetch hero banners
-                const { data: bannerData } = await supabase.from('banners').select('*').eq('type', 'hero').order('order');
-                if (bannerData && bannerData.length > 0) {
-                    setBanners(bannerData.map((b: any) => ({
-                        id: b.id,
-                        image: b.image_url || b.image,
-                        tag: b.tag || 'Premium Trip',
-                        title: b.title,
-                        subtitle: b.subtitle,
-                        link: b.link
+                const data = await api.banners.get();
+                if (data.banners && data.banners.length > 0) {
+                    setBanners(data.banners.map((b: any) => ({
+                        id: b.id, image: b.image, tag: b.tag || 'Premium Trip',
+                        title: b.title, subtitle: b.subtitle, link: b.link
                     })));
                 }
-
-                // Fetch quick links
-                const { data: linkData } = await supabase.from('quick_links').select('*').order('order');
-                if (linkData && linkData.length > 0) {
-                    setLinks(linkData.map((l: any) => ({
-                        id: l.id,
-                        icon: l.icon,
-                        image: l.image,
-                        label: l.label,
-                        path: l.path
+                if (data.quickLinks && data.quickLinks.length > 0) {
+                    setLinks(data.quickLinks.map((l: any) => ({
+                        id: l.id, icon: l.icon, image: l.image, label: l.label, path: l.path
                     })));
                 }
-
-                // Fetch event banners
-                const { data: eventData } = await supabase.from('event_banners').select('*').order('order');
-                if (eventData && eventData.length > 0) {
-                    setEventBanners(eventData.map((e: any) => ({
-                        id: e.id,
-                        image: e.image,
-                        backgroundColor: e.background_color,
-                        tag: e.tag,
-                        title: e.title,
-                        icon: e.icon,
-                        link: e.link,
-                        location: e.location
+                if (data.eventBanners && data.eventBanners.length > 0) {
+                    setEventBanners(data.eventBanners.map((e: any) => ({
+                        id: e.id, image: e.image, backgroundColor: e.background_color,
+                        tag: e.tag, title: e.title, icon: e.icon, link: e.link, location: e.location
                     })));
                 }
-
-                // Fetch category tabs
-                const { data: categoryData } = await supabase.from('banners').select('*').eq('type', 'category').order('order');
-                if (categoryData && categoryData.length > 0) {
-                    setCategoryTabs(categoryData.map((c: any) => ({
-                        id: c.id,
-                        name: c.name || c.tag,
-                        title: c.title,
-                        subtitle: c.subtitle,
-                        bannerImage: c.image_url || c.image
+                if (data.categoryTabs && data.categoryTabs.length > 0) {
+                    setCategoryTabs(data.categoryTabs.map((c: any) => ({
+                        id: c.id, name: c.name, title: c.title, subtitle: c.subtitle, bannerImage: c.banner_image
                     })));
                 }
             } catch (error) {
@@ -311,108 +283,10 @@ export const AdminBannerManage: React.FC = () => {
         }
     };
 
-    // Save Action to Supabase
+    // Save Action via API
     const saveAll = async () => {
         try {
-            // No payload size check needed for URL strings
-
-            // Save hero banners - delete all and re-insert
-            const { error: deleteError } = await supabase.from('banners').delete().eq('type', 'hero');
-            if (deleteError) {
-                console.error('Delete hero banners failed:', deleteError);
-                throw deleteError; // Stop execution if delete fails
-            }
-
-            const bannerInserts = banners.map((b, index) => ({
-                id: b.id,
-                type: 'hero',
-                image_url: b.image,
-
-                tag: b.tag,
-                title: b.title,
-                subtitle: b.subtitle,
-                link: b.link,
-                order: index
-            }));
-            if (bannerInserts.length > 0) {
-                const { error: insertError } = await supabase.from('banners').insert(bannerInserts);
-                if (insertError) {
-                    console.error('Insert hero banners failed:', insertError);
-                    throw insertError;
-                }
-            }
-
-            // Save quick links
-            const { error: deleteLinkError } = await supabase.from('quick_links').delete().not('id', 'is', null);
-            if (deleteLinkError) {
-                console.error('Delete quick_links failed:', deleteLinkError);
-                throw new Error('quick_links 삭제 실패: ' + deleteLinkError.message);
-            }
-            const linkInserts = links.map((l, index) => ({
-                id: l.id,
-                icon: l.icon,
-                image: l.image,
-                label: l.label,
-                path: l.path,
-                order: index
-            }));
-            if (linkInserts.length > 0) {
-                const { error: linkError } = await supabase.from('quick_links').insert(linkInserts);
-                if (linkError) {
-                    console.error('Insert quick_links failed:', linkError);
-                    throw new Error('quick_links 저장 실패: ' + linkError.message);
-                }
-            }
-
-            // Save event banners
-            const { error: deleteEventError } = await supabase.from('event_banners').delete().not('id', 'is', null);
-            if (deleteEventError) {
-                console.error('Delete event_banners failed:', deleteEventError);
-                throw new Error('event_banners 삭제 실패: ' + deleteEventError.message);
-            }
-            const eventInserts = eventBanners.map((e, index) => ({
-                id: e.id,
-                image: e.image,
-                background_color: e.backgroundColor,
-                tag: e.tag,
-                title: e.title,
-                icon: e.icon,
-                link: e.link,
-                location: e.location,
-                order: index
-            }));
-            if (eventInserts.length > 0) {
-                const { error: eventError } = await supabase.from('event_banners').insert(eventInserts);
-                if (eventError) {
-                    console.error('Insert event_banners failed:', eventError);
-                    throw new Error('event_banners 저장 실패: ' + eventError.message);
-                }
-            }
-
-            // Save category tabs
-            const { error: deleteCatError } = await supabase.from('banners').delete().eq('type', 'category');
-            if (deleteCatError) {
-                console.error('Delete category tabs failed:', deleteCatError);
-                throw new Error('category tabs 삭제 실패: ' + deleteCatError.message);
-            }
-            const categoryInserts = categoryTabs.map((c, index) => ({
-                id: c.id,
-                type: 'category',
-                name: c.name,
-                tag: c.name,
-                title: c.title,
-                subtitle: c.subtitle,
-                image_url: c.bannerImage,
-                order: index
-            }));
-            if (categoryInserts.length > 0) {
-                const { error: catError } = await supabase.from('banners').insert(categoryInserts);
-                if (catError) {
-                    console.error('Insert category tabs failed:', catError);
-                    throw new Error('category tabs 저장 실패: ' + catError.message);
-                }
-            }
-
+            await api.banners.save({ banners, quickLinks: links, eventBanners, categoryTabs });
             setHasUnsavedChanges(false);
             setShowToast(true);
             setTimeout(() => setShowToast(false), 3000);

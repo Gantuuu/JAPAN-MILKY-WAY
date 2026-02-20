@@ -1,5 +1,5 @@
 
-import { supabase } from '../lib/supabaseClient';
+
 
 /**
  * Image Optimization Utility

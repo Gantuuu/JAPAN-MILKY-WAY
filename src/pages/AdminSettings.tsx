@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminSidebar } from '../components/admin/AdminSidebar';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 
 interface BankAccountSettings {
     bankName: string;
@@ -17,27 +17,22 @@ export const AdminSettings: React.FC = () => {
     });
     const [isSaved, setIsSaved] = useState(false);
 
-    // Load settings from Supabase
+    // Load settings from API
     useEffect(() => {
         const fetchSettings = async () => {
-            const { data } = await supabase.from('settings').select('*').eq('key', 'bank_account').single();
-            if (data && data.value) {
-                setSettings(data.value);
-            }
+            try {
+                const data = await api.settings.get('bank_account');
+                if (data && data.value) {
+                    setSettings(typeof data.value === 'string' ? JSON.parse(data.value) : data.value);
+                }
+            } catch (e) { console.error('Failed to load settings', e); }
         };
         fetchSettings();
     }, []);
 
     const handleSave = async () => {
         try {
-            const { error } = await supabase.from('settings').upsert({
-                key: 'bank_account',
-                value: settings,
-                updated_at: new Date().toISOString()
-            }, {
-                onConflict: 'key'
-            });
-            if (error) throw error;
+            await api.settings.save('bank_account', settings);
             setIsSaved(true);
             setTimeout(() => setIsSaved(false), 3000);
         } catch (e) {

@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BottomNav } from '../components/layout/BottomNav';
-import { useNotification, Notification } from '../contexts/NotificationContext';
-import { supabase } from '../lib/supabaseClient';
+import { useNotification, type Notification } from '../contexts/NotificationContext';
+
 
 export const MyNotifications: React.FC = () => {
     const navigate = useNavigate();

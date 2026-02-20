@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabaseClient';
+import { api } from '../../lib/api';
 import { useTranslation } from 'react-i18next';
 
 export const ReviewSection: React.FC = () => {
@@ -11,22 +11,21 @@ export const ReviewSection: React.FC = () => {
     const { data: reviews = [] } = useQuery({
         queryKey: ['homeReviews'],
         queryFn: async () => {
-            const { data } = await supabase
-                .from('reviews')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(10);
-
-            if (data) {
-                return data.map((r: any) => ({
-                    id: r.id,
-                    author: r.author_name,
-                    visitDate: r.visit_date,
-                    rating: r.rating,
-                    content: r.content,
-                    images: r.images,
-                    productName: r.product_name || t('home.reviews.default_product')
-                }));
+            try {
+                const data = await api.reviews.list();
+                if (Array.isArray(data)) {
+                    return data.slice(0, 10).map((r: any) => ({
+                        id: r.id,
+                        author: r.author_name,
+                        visitDate: r.visit_date,
+                        rating: r.rating,
+                        content: r.content,
+                        images: r.images,
+                        productName: r.product_name || t('home.reviews.default_product')
+                    }));
+                }
+            } catch (error) {
+                console.error('Error fetching reviews:', error);
             }
             return [];
         },

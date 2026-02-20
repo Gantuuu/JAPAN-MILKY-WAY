@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminSidebar } from '../components/admin/AdminSidebar';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { uploadImage } from '../utils/upload';
 
 interface Guide {
@@ -32,32 +32,34 @@ export const AdminGuideManage: React.FC = () => {
         specialties: []
     });
 
-    // Load guides from Supabase
+    // Load guides from API
     useEffect(() => {
         const fetchGuides = async () => {
-            const { data } = await supabase.from('guides').select('*').order('created_at', { ascending: false });
-            if (data) {
-                setGuides(data.map((g: any) => ({
-                    id: g.id,
-                    name: g.name,
-                    image: g.image,
-                    introduction: g.introduction,
-                    phone: g.phone,
-                    kakaoId: g.kakao_id,
-                    languages: g.languages || [],
-                    specialties: g.specialties || [],
-                    createdAt: g.created_at
-                })));
+            try {
+                const data = await api.guides.list();
+                if (Array.isArray(data)) {
+                    setGuides(data.map((g: any) => ({
+                        id: g.id,
+                        name: g.name,
+                        image: g.image,
+                        introduction: g.introduction,
+                        phone: g.phone,
+                        kakaoId: g.kakao_id || g.kakaoId,
+                        languages: typeof g.languages === 'string' ? JSON.parse(g.languages || '[]') : (g.languages || []),
+                        specialties: typeof g.specialties === 'string' ? JSON.parse(g.specialties || '[]') : (g.specialties || []),
+                        createdAt: g.created_at || g.createdAt
+                    })));
+                }
+            } catch (error) {
+                console.error('Error fetching guides:', error);
             }
         };
         fetchGuides();
     }, []);
 
-    // Save guides to Supabase
+    // Save guides via API
     const saveGuides = async (updatedGuides: Guide[]) => {
         try {
-            // Delete all and re-insert
-            await supabase.from('guides').delete().neq('id', '');
             const inserts = updatedGuides.map(g => ({
                 id: g.id,
                 name: g.name,
@@ -69,9 +71,7 @@ export const AdminGuideManage: React.FC = () => {
                 specialties: g.specialties,
                 created_at: g.createdAt
             }));
-            if (inserts.length > 0) {
-                await supabase.from('guides').insert(inserts);
-            }
+            await api.guides.save(inserts);
             setGuides(updatedGuides);
             return true;
         } catch (e) {

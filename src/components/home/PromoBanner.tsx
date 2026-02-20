@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import { api } from '../../lib/api';
 import { getOptimizedImageUrl } from '../../utils/supabaseImage';
 
 interface EventBanner {
@@ -18,18 +18,22 @@ export const PromoBanner: React.FC = () => {
 
     useEffect(() => {
         const fetchBanners = async () => {
-            const { data } = await supabase.from('event_banners').select('*').order('order');
-            if (data && data.length > 0) {
-                setBanners(data.map((e: any) => ({
-                    id: e.id,
-                    image: e.image,
-                    backgroundColor: e.background_color || '#0F766E',
-                    tag: e.tag,
-                    title: e.title,
-                    icon: e.icon,
-                    link: e.link,
-                    location: e.location
-                })));
+            try {
+                const data = await api.eventBanners.list();
+                if (Array.isArray(data) && data.length > 0) {
+                    setBanners(data.map((e: any) => ({
+                        id: e.id,
+                        image: e.image,
+                        backgroundColor: e.background_color || '#0F766E',
+                        tag: e.tag,
+                        title: e.title,
+                        icon: e.icon,
+                        link: e.link,
+                        location: e.location
+                    })));
+                }
+            } catch (error) {
+                console.error('Error fetching event banners:', error);
             }
         };
         fetchBanners();

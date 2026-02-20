@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { AdminSidebar } from '../components/admin/AdminSidebar';
 import { sendNotificationEmail } from '../lib/email';
 import type { QuoteRequest } from '../components/admin/QuoteModals';
@@ -29,32 +29,31 @@ export const AdminQuoteManage: React.FC = () => {
     const [requests, setRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // Fetch quotes from Supabase
+    // Fetch quotes from API
     const fetchQuotes = async () => {
         setLoading(true);
-        const { data, error } = await supabase
-            .from('quotes')
-            .select('*')
-            .order('created_at', { ascending: false });
+        try {
+            const data = await api.quotes.list();
 
-        if (error) {
+            if (Array.isArray(data)) {
+                // Map snake_case to camelCase
+                const mappedQuotes = data.map((q: any) => ({
+                    ...q,
+                    travelTypes: q.travel_types || [],
+                    accommodations: q.accommodations || [],
+                    additionalRequest: q.additional_request,
+                    adminNote: q.admin_note,
+                    estimateUrl: q.estimate_url,
+                    attachmentUrl: q.attachment_url, // Map from DB
+                    createdAt: q.created_at,
+                    userId: q.user_id,
+                    // Make sure date format matches UI expectations (YYYY-MM-DD)
+                    date: new Date(q.created_at).toLocaleDateString()
+                }));
+                setRequests(mappedQuotes);
+            }
+        } catch (error) {
             console.error('Error fetching quotes:', error);
-        } else if (data) {
-            // Map snake_case to camelCase
-            const mappedQuotes = data.map(q => ({
-                ...q,
-                travelTypes: q.travel_types || [],
-                accommodations: q.accommodations || [],
-                additionalRequest: q.additional_request,
-                adminNote: q.admin_note,
-                estimateUrl: q.estimate_url,
-                attachmentUrl: q.attachment_url, // Map from DB
-                createdAt: q.created_at,
-                userId: q.user_id,
-                // Make sure date format matches UI expectations (YYYY-MM-DD)
-                date: new Date(q.created_at).toLocaleDateString()
-            }));
-            setRequests(mappedQuotes);
         }
         setLoading(false);
     };
@@ -66,12 +65,7 @@ export const AdminQuoteManage: React.FC = () => {
     // Handle Status Change
     const handleStatusChange = async (id: string, newStatus: string) => {
         try {
-            const { error } = await supabase
-                .from('quotes')
-                .update({ status: newStatus, updated_at: new Date().toISOString() })
-                .eq('id', id);
-
-            if (error) throw error;
+            await api.quotes.update(id, { status: newStatus, updated_at: new Date().toISOString() });
 
             // Reflect in local state
             setRequests(prev => prev.map(req =>
@@ -133,54 +127,41 @@ export const AdminQuoteManage: React.FC = () => {
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             const durationText = `${diffDays}박 ${diffDays + 1}일`;
 
-            // 1. Create New Reservation Object in Supabase
-            // Using only the most basic columns that definitely exist
-            const { data: newReservation, error: insertError } = await supabase
-                .from('reservations')
-                .insert({
-                    user_id: selectedRequest.userId || null,
-                    type: 'quote', // Explicitly set type
-                    product_name: `${selectedRequest.destination} 맞춤 견적`,
-                    customer_name: selectedRequest.name,
-                    customer_phone: selectedRequest.phone,
-                    customer_email: selectedRequest.email,
-                    total_people: selectedRequest.headcount,
-                    start_date: data.startDate,
-                    end_date: data.endDate,
-                    status: 'pending',
-                    price_breakdown: {
-                        total: data.totalAmount,
-                        deposit: data.deposit,
-                        local: data.totalAmount - data.deposit
-                    },
-                    bank_account: {
-                        bankName: '국민은행',
-                        accountNumber: '123-456-789012',
-                        accountHolder: '밀키웨이투어'
-                    }
-                })
-                .select()
-                .single();
-
-            if (insertError) throw insertError;
+            // 1. Create New Reservation via API
+            const newReservation = await api.reservations.create({
+                user_id: selectedRequest.userId || null,
+                type: 'quote',
+                product_name: `${selectedRequest.destination} 맞춤 견적`,
+                customer_name: selectedRequest.name,
+                customer_phone: selectedRequest.phone,
+                customer_email: selectedRequest.email,
+                total_people: selectedRequest.headcount,
+                start_date: data.startDate,
+                end_date: data.endDate,
+                status: 'pending',
+                price_breakdown: {
+                    total: data.totalAmount,
+                    deposit: data.deposit,
+                    local: data.totalAmount - data.deposit
+                },
+                bank_account: {
+                    bankName: '국민은행',
+                    accountNumber: '123-456-789012',
+                    accountHolder: '밀키웨이투어'
+                }
+            });
 
             // 2. Update Quote Status to 'converted' AND sync final prices
             const requestId = selectedRequest.id;
 
-            // Update Admin Storage
-            const { error: updateError } = await supabase
-                .from('quotes')
-                .update({
-                    status: 'converted',
-                    confirmed_price: data.totalAmount,
-                    deposit: data.deposit,
-                    confirmed_start_date: data.startDate,
-                    confirmed_end_date: data.endDate,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', requestId);
-
-            if (updateError) throw updateError;
+            await api.quotes.update(requestId, {
+                status: 'converted',
+                confirmed_price: data.totalAmount,
+                deposit: data.deposit,
+                confirmed_start_date: data.startDate,
+                confirmed_end_date: data.endDate,
+                updated_at: new Date().toISOString()
+            });
 
             // Reflect in local state
             setRequests(prev => prev.map(req =>
@@ -206,22 +187,17 @@ export const AdminQuoteManage: React.FC = () => {
         const requestId = selectedRequest.id;
 
         try {
-            // Update Supabase with confirmed values
-            const { error } = await supabase
-                .from('quotes')
-                .update({
-                    status: 'answered',
-                    admin_note: note,
-                    estimate_url: url,
-                    confirmed_price: priceDetail.totalAmount || null,
-                    deposit: priceDetail.deposit || null,
-                    confirmed_start_date: confirmedStartDate || null,
-                    confirmed_end_date: confirmedEndDate || null,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', requestId);
-
-            if (error) throw error;
+            // Update via API with confirmed values
+            await api.quotes.update(requestId, {
+                status: 'answered',
+                admin_note: note,
+                estimate_url: url,
+                confirmed_price: priceDetail.totalAmount || null,
+                deposit: priceDetail.deposit || null,
+                confirmed_start_date: confirmedStartDate || null,
+                confirmed_end_date: confirmedEndDate || null,
+                updated_at: new Date().toISOString()
+            });
 
             // 2. Send email notification via Gmail SMTP
             try {
@@ -281,12 +257,7 @@ export const AdminQuoteManage: React.FC = () => {
 
             dbUpdates.updated_at = new Date().toISOString();
 
-            const { error } = await supabase
-                .from('quotes')
-                .update(dbUpdates)
-                .eq('id', id);
-
-            if (error) throw error;
+            await api.quotes.update(id, dbUpdates);
 
             // Update local state
             setRequests(prev => prev.map(req =>
@@ -297,8 +268,6 @@ export const AdminQuoteManage: React.FC = () => {
             if (selectedRequest && selectedRequest.id === id) {
                 setSelectedRequest(prev => ({ ...prev, ...updates }));
             }
-
-            // alert('정보가 수정되었습니다.'); // Optional: feedback
 
         } catch (error) {
             console.error("Failed to update quote:", error);

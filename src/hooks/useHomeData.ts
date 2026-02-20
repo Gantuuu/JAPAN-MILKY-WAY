@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 
 interface CategoryTab {
     id: string;
@@ -39,16 +39,13 @@ export const useHomeData = () => {
         queryKey: ['homeData'],
         queryFn: async () => {
             // Fetch all data in parallel using Promise.all
-            const [productsResult, tabsResult, magazinesResult] = await Promise.all([
-                // Fetch products (Minimal columns)
-                supabase.from('products').select('id, name, category, price, main_images, duration, tags'),
-                // Fetch category tabs/banners
-                supabase.from('banners').select('id, name, title, subtitle, image_url').eq('type', 'category').order('order'),
-                // Fetch magazines
-                supabase.from('magazines').select('id, title, description, category, image, is_active').eq('is_active', true).order('order')
+            const [productsData, bannersData, magazinesData] = await Promise.all([
+                api.products.list(),
+                api.banners.get(),
+                api.magazines.list()
             ]);
 
-            const products: Product[] = (productsResult.data || []).map((p: any) => ({
+            const products: Product[] = (Array.isArray(productsData) ? productsData : []).map((p: any) => ({
                 id: p.id,
                 name: p.name,
                 category: p.category,
@@ -58,7 +55,8 @@ export const useHomeData = () => {
                 tags: p.tags || []
             }));
 
-            const tabs: CategoryTab[] = (tabsResult.data || []).map((t: any) => ({
+            const tabsArray = Array.isArray(bannersData) ? bannersData.filter((b: any) => b.type === 'category') : [];
+            const tabs: CategoryTab[] = tabsArray.map((t: any) => ({
                 id: t.id,
                 name: t.name,
                 title: t.title,
@@ -66,7 +64,7 @@ export const useHomeData = () => {
                 bannerImage: t.image_url
             }));
 
-            const magazines: Magazine[] = (magazinesResult.data || []).map((m: any) => ({
+            const magazines: Magazine[] = (Array.isArray(magazinesData) ? magazinesData.filter((m: any) => m.is_active) : []).map((m: any) => ({
                 id: m.id,
                 title: m.title,
                 description: m.description,

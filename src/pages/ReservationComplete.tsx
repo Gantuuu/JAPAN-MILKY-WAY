@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 
 export const ReservationComplete: React.FC = () => {
     const navigate = useNavigate();
@@ -20,13 +20,7 @@ export const ReservationComplete: React.FC = () => {
 
         const fetchReservation = async () => {
             try {
-                const { data, error } = await supabase
-                    .from('reservations')
-                    .select('*')
-                    .eq('id', reservationId)
-                    .single();
-
-                if (error) throw error;
+                const data = await api.reservations.get(reservationId);
                 setReservation(data);
 
                 // Handle Bank Account Logic here immediately
@@ -34,11 +28,7 @@ export const ReservationComplete: React.FC = () => {
                     setBankAccount(data.bank_account);
                 } else {
                     // Fallback
-                    const { data: settingData } = await supabase
-                        .from('settings')
-                        .select('value')
-                        .eq('key', 'bank_account')
-                        .single();
+                    const settingData = await api.settings.get('bank_account');
 
                     if (settingData?.value) {
                         setBankAccount(settingData.value);

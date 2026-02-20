@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { sendNotificationEmail } from '../lib/email';
 import { BottomNav } from '../components/layout/BottomNav';
 
@@ -31,19 +31,19 @@ export const CustomEstimate: React.FC = () => {
     // Auth Check & Auto-fill
     React.useEffect(() => {
         const checkAuthAndLoadProfile = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session) {
+            try {
+                const me = await api.auth.me();
+                if (!me) {
+                    alert('로그인이 필요한 서비스입니다.\n로그인 페이지로 이동합니다.');
+                    navigate('/login');
+                    return;
+                }
+                if (me.full_name || me.name) setName(me.full_name || me.name);
+                if (me.email) setEmail(me.email);
+                if (me.phone) setPhone(me.phone);
+            } catch (error) {
                 alert('로그인이 필요한 서비스입니다.\n로그인 페이지로 이동합니다.');
                 navigate('/login');
-                return;
-            }
-
-            // Auto-fill user info
-            const { user } = session;
-            if (user) {
-                if (user.user_metadata.full_name) setName(user.user_metadata.full_name);
-                if (user.email) setEmail(user.email);
-                if (user.phone) setPhone(user.phone); // Supabase auth phone is top-level usually, but check metadata too if custom
             }
         };
         checkAuthAndLoadProfile();
@@ -56,17 +56,17 @@ export const CustomEstimate: React.FC = () => {
         }
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
+            const me = await api.auth.me();
 
             const newEstimate = {
-                user_id: user?.id || null, // Can be null for guest requests if RLS allows or anon
-                type: 'personal', // 'custom' was used but 'personal' aligns with Admin views usually, or 'custom' if schema allows
+                user_id: me?.id || null,
+                type: 'personal',
                 status: 'new',
                 name: name,
                 phone: phone,
                 email: email,
                 destination: selectedDestinations.join(', '),
-                period: `${startDate} ~ ${endDate}`, // Map to 'period' column
+                period: `${startDate} ~ ${endDate}`,
                 headcount: `성인 ${adultCount}명${childCount > 0 ? `, 아동 ${childCount}명` : ''}`,
                 budget: `${priceRange}만원`,
                 travel_types: selectedThemes,
@@ -76,14 +76,7 @@ export const CustomEstimate: React.FC = () => {
                 created_at: new Date().toISOString()
             };
 
-            const { data, error } = await supabase
-                .from('quotes')
-                .insert(newEstimate)
-                .select()
-                .single();
-
-            if (error) throw error;
-
+            const data = await api.quotes.create(newEstimate);
 
             // Send Email Notification
             await sendNotificationEmail(
@@ -95,7 +88,7 @@ export const CustomEstimate: React.FC = () => {
                 }
             );
 
-            navigate('/estimate-complete', { state: { id: data.id, ...newEstimate } });
+            navigate('/estimate-complete', { state: { id: data?.id || '', ...newEstimate } });
         } catch (error: any) {
             console.error('Failed to submit estimate:', error);
             alert(`견적 요청 저장 중 오류가 발생했습니다.\n(${error.message || '상세 에러 없음'})`);

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getResponsiveImageProps } from '../../utils/supabaseImage';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabaseClient';
+import { api } from '../../lib/api';
 import { HeroSkeleton } from '../skeletons/HeroSkeleton';
 import { useTranslation } from 'react-i18next';
 
@@ -39,18 +39,25 @@ export const HeroSection: React.FC = () => {
     ], [t]);
 
     const { data: banners = [], isLoading } = useQuery({
-        queryKey: ['heroBanners', t('home.hero.banner1_title')], // Add dependency to translation
+        queryKey: ['heroBanners', t('home.hero.banner1_title')],
         queryFn: async () => {
-            const { data } = await supabase.from('banners').select('id, image_url, tag, title, subtitle, link').eq('type', 'hero').order('order');
-            if (data && data.length > 0) {
-                return data.map((b: any) => ({
-                    id: b.id,
-                    image: b.image_url,
-                    tag: b.tag || 'Premium Trip',
-                    title: b.title,
-                    subtitle: b.subtitle,
-                    link: b.link
-                }));
+            try {
+                const data = await api.banners.get();
+                if (Array.isArray(data) && data.length > 0) {
+                    const heroBanners = data.filter((b: any) => b.type === 'hero');
+                    if (heroBanners.length > 0) {
+                        return heroBanners.map((b: any) => ({
+                            id: b.id,
+                            image: b.image_url,
+                            tag: b.tag || 'Premium Trip',
+                            title: b.title,
+                            subtitle: b.subtitle,
+                            link: b.link
+                        }));
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching banners:', error);
             }
             return DEFAULT_BANNERS;
         },

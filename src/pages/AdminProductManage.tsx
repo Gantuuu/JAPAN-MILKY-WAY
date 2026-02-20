@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { AdminSidebar } from '../components/admin/AdminSidebar';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { uploadImage, uploadFile } from '../utils/upload';
 import { optimizeImage } from '../utils/imageOptimizer';
 import { getOptimizedImageUrl } from '../utils/supabaseImage';
@@ -32,76 +32,68 @@ export const AdminProductManage: React.FC = () => {
         document.documentElement.classList.toggle('dark');
     };
 
-    // Load from Supabase
+    // Load from API
     const fetchProducts = async () => {
-        const { data, error } = await supabase
-            .from('products')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-        if (error) {
+        try {
+            const data = await api.products.list();
+            if (Array.isArray(data)) {
+                const parse = (v: any, fallback: any = []) => {
+                    if (typeof v === 'string') try { return JSON.parse(v); } catch { return fallback; }
+                    return v || fallback;
+                };
+                const mappedProducts: TourProduct[] = data.map((item: any) => ({
+                    id: item.id,
+                    name: item.name,
+                    price: item.price,
+                    originalPrice: item.original_price || item.originalPrice,
+                    duration: item.duration,
+                    category: item.category,
+                    mainImages: parse(item.main_images || item.mainImages),
+                    isPopular: item.is_popular || item.isPopular,
+                    tags: parse(item.tags),
+                    description: item.description,
+                    galleryImages: parse(item.gallery_images || item.galleryImages),
+                    detailImages: parse(item.detail_images || item.detailImages),
+                    itineraryImages: parse(item.itinerary_images || item.itineraryImages),
+                    detailSlides: parse(item.detail_slides || item.detailSlides),
+                    detailBlocks: parse(item.detail_blocks || item.detailBlocks),
+                    itineraryBlocks: parse(item.itinerary_blocks || item.itineraryBlocks),
+                    status: item.status,
+                    isFeatured: item.is_featured || item.isFeatured,
+                    highlights: parse(item.highlights),
+                    included: parse(item.included),
+                    excluded: parse(item.excluded),
+                    viewCount: item.view_count || item.viewCount,
+                    bookingCount: item.booking_count || item.bookingCount,
+                    pricingOptions: parse(item.pricing_options || item.pricingOptions),
+                    accommodationOptions: parse(item.accommodation_options || item.accommodationOptions),
+                    vehicleOptions: parse(item.vehicle_options || item.vehicleOptions),
+                    createdAt: item.created_at || item.createdAt,
+                    updatedAt: item.updated_at || item.updatedAt
+                }));
+                setProducts(mappedProducts);
+            }
+        } catch (error) {
             console.error('Error fetching products:', error);
-            alert('상품 목록을 불러오지 못했습니다.');
-        } else if (data) {
-            const mappedProducts: TourProduct[] = data.map(item => ({
-                id: item.id,
-                name: item.name,
-                price: item.price,
-                originalPrice: item.original_price,
-                duration: item.duration,
-                category: item.category,
-                mainImages: item.main_images || [],
-                isPopular: item.is_popular,
-                tags: item.tags || [],
-                description: item.description,
-                galleryImages: item.gallery_images || [],
-                detailImages: item.detail_images || [],
-                itineraryImages: item.itinerary_images || [], // simple list
-                detailSlides: item.detail_slides || [], // jsonb
-                detailBlocks: item.detail_blocks || [
-                    ...(item.detail_images || []).map((img: string) => ({ id: `img-${Date.now()}-${Math.random()}`, type: 'image', content: img })),
-                    ...(item.detail_slides || []).map((slide: any) => ({ id: `slide-${Date.now()}-${Math.random()}`, type: 'slide', content: slide }))
-                ],
-                itineraryBlocks: item.itinerary_blocks || (item.itinerary_images || []).map((img: string) => ({
-                    id: `itn-${Date.now()}-${Math.random()}`,
-                    type: 'image',
-                    content: img
-                })),
-                status: item.status,
-                isFeatured: item.is_featured,
-                highlights: item.highlights || [],
-                included: item.included || [],
-                excluded: item.excluded || [],
-                viewCount: item.view_count,
-                bookingCount: item.booking_count,
-                pricingOptions: item.pricing_options || [],
-                accommodationOptions: item.accommodation_options || [],
-                vehicleOptions: item.vehicle_options || [],
-                createdAt: item.created_at,
-                updatedAt: item.updated_at
-            }));
-            setProducts(mappedProducts);
         }
     };
 
     const fetchCategories = async () => {
-        const { data } = await supabase
-            .from('categories')
-            .select('*')
-            .or('type.eq.product,type.is.null')
-            .eq('is_active', true)
-            .order('order');
-
-        if (data) {
-            setCategories(data.map((c: any) => ({
-                id: c.id,
-                icon: c.icon,
-                name: c.name,
-                description: c.description,
-                isActive: c.is_active,
-                order: c.order,
-                type: c.type || 'product'
-            })));
+        try {
+            const data = await api.categories.list();
+            if (Array.isArray(data)) {
+                setCategories(data.map((c: any) => ({
+                    id: c.id,
+                    icon: c.icon,
+                    name: c.name,
+                    description: c.description,
+                    isActive: c.is_active ?? true,
+                    order: c.sort_order ?? 0,
+                    type: c.type || 'product'
+                })));
+            }
+        } catch (error) {
+            console.error('Error fetching categories:', error);
         }
     };
 
@@ -110,52 +102,48 @@ export const AdminProductManage: React.FC = () => {
         fetchCategories();
     }, []);
 
-    // Save to Supabase (Upsert)
+    // Save via API (Upsert)
     const saveProducts = async (updatedProducts: TourProduct[], productToSave?: TourProduct): Promise<boolean> => {
         if (!productToSave) return false;
-
-        // Map back to snake_case for DB
-        const dbPayload = {
-            id: productToSave.id,
-            name: productToSave.name,
-            price: productToSave.price,
-            original_price: productToSave.originalPrice,
-            duration: productToSave.duration,
-            category: productToSave.category,
-            main_images: productToSave.mainImages,
-            is_popular: productToSave.isPopular,
-            tags: productToSave.tags,
-            description: productToSave.description,
-            gallery_images: productToSave.galleryImages,
-            detail_images: productToSave.detailImages,
-            itinerary_images: productToSave.itineraryImages,
-            detail_slides: productToSave.detailSlides, // Legacy support
-            detail_blocks: productToSave.detailBlocks, // New unified content
-            itinerary_blocks: productToSave.itineraryBlocks, // New unified itinerary
-            status: productToSave.status,
-            is_featured: productToSave.isFeatured,
-            highlights: productToSave.highlights,
-            included: productToSave.included,
-            excluded: productToSave.excluded,
-            pricing_options: productToSave.pricingOptions,
-            accommodation_options: productToSave.accommodationOptions,
-            vehicle_options: productToSave.vehicleOptions,
-            updated_at: new Date().toISOString()
-        };
-
-        const { error } = await supabase
-            .from('products')
-            .upsert(dbPayload);
-
-        if (error) {
+        try {
+            const dbPayload = {
+                id: productToSave.id,
+                name: productToSave.name,
+                price: productToSave.price,
+                original_price: productToSave.originalPrice,
+                duration: productToSave.duration,
+                category: productToSave.category,
+                main_images: productToSave.mainImages,
+                is_popular: productToSave.isPopular,
+                tags: productToSave.tags,
+                description: productToSave.description,
+                gallery_images: productToSave.galleryImages,
+                detail_images: productToSave.detailImages,
+                itinerary_images: productToSave.itineraryImages,
+                detail_slides: productToSave.detailSlides,
+                detail_blocks: productToSave.detailBlocks,
+                itinerary_blocks: productToSave.itineraryBlocks,
+                status: productToSave.status,
+                is_featured: productToSave.isFeatured,
+                highlights: productToSave.highlights,
+                included: productToSave.included,
+                excluded: productToSave.excluded,
+                pricing_options: productToSave.pricingOptions,
+                accommodation_options: productToSave.accommodationOptions,
+                vehicle_options: productToSave.vehicleOptions,
+            };
+            try {
+                await api.products.update(productToSave.id, dbPayload);
+            } catch {
+                await api.products.create(dbPayload);
+            }
+            await fetchProducts();
+            return true;
+        } catch (error: any) {
             console.error('Failed to save product:', error);
             alert('상품 저장 중 오류가 발생했습니다: ' + error.message);
             return false;
         }
-
-        // Refresh list
-        await fetchProducts();
-        return true;
     };
 
     // Filtered and sorted products
@@ -193,11 +181,10 @@ export const AdminProductManage: React.FC = () => {
         const product = products.find(p => p.id === id);
         if (!product) return;
         const newStatus = product.status === 'active' ? 'inactive' : 'active';
-
-        const { error } = await supabase.from('products').update({ status: newStatus }).eq('id', id);
-        if (!error) {
+        try {
+            await api.products.update(id, { status: newStatus });
             setProducts(prev => prev.map(p => p.id === id ? { ...p, status: newStatus } : p));
-        }
+        } catch (e) { console.error(e); }
     };
 
     // Toggle featured
@@ -205,11 +192,10 @@ export const AdminProductManage: React.FC = () => {
         const product = products.find(p => p.id === id);
         if (!product) return;
         const newVal = !product.isFeatured;
-
-        const { error } = await supabase.from('products').update({ is_featured: newVal }).eq('id', id);
-        if (!error) {
+        try {
+            await api.products.update(id, { is_featured: newVal });
             setProducts(prev => prev.map(p => p.id === id ? { ...p, isFeatured: newVal } : p));
-        }
+        } catch (e) { console.error(e); }
     };
 
     // Toggle popular
@@ -217,21 +203,20 @@ export const AdminProductManage: React.FC = () => {
         const product = products.find(p => p.id === id);
         if (!product) return;
         const newVal = !product.isPopular;
-
-        const { error } = await supabase.from('products').update({ is_popular: newVal }).eq('id', id);
-        if (!error) {
+        try {
+            await api.products.update(id, { is_popular: newVal });
             setProducts(prev => prev.map(p => p.id === id ? { ...p, isPopular: newVal } : p));
-        }
+        } catch (e) { console.error(e); }
     };
 
     // Delete product
     const deleteProduct = async (id: string) => {
         if (confirm('정말 이 상품을 삭제하시겠습니까?')) {
-            const { error } = await supabase.from('products').delete().eq('id', id);
-            if (error) {
-                alert('삭제 실패: ' + error.message);
-            } else {
+            try {
+                await api.products.delete(id);
                 setProducts(prev => prev.filter(p => p.id !== id));
+            } catch (error: any) {
+                alert('삭제 실패: ' + error.message);
             }
         }
     };

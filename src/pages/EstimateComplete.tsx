@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { DEFAULT_CATEGORIES, type Category } from '../types/category';
 
 export const EstimateComplete: React.FC = () => {
@@ -13,13 +13,9 @@ export const EstimateComplete: React.FC = () => {
     useEffect(() => {
         const fetchCategories = async () => {
             try {
-                const { data } = await supabase
-                    .from('categories')
-                    .select('*')
-                    .or('type.eq.product,type.is.null')
-                    .order('order');
-                if (data && data.length > 0) {
-                    setCategories(data.map((c: any) => ({
+                const data = await api.categories.list();
+                if (Array.isArray(data) && data.length > 0) {
+                    setCategories(data.filter((c: any) => c.type === 'product' || !c.type).map((c: any) => ({
                         id: c.id,
                         icon: c.icon,
                         name: c.name,
@@ -28,6 +24,8 @@ export const EstimateComplete: React.FC = () => {
                         order: c.order
                     })));
                 }
+            } catch (error) {
+                console.error('Error fetching categories:', error);
             } finally {
                 setIsLoading(false);
             }

@@ -1,134 +1,289 @@
 const API_BASE = '/api';
 
+async function request(url: string, options?: RequestInit) {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    return res.json();
+}
+
 export const api = {
     auth: {
         me: async () => {
             const res = await fetch(`${API_BASE}/auth/me`);
             return res.json();
         },
+        login: async (email: string, password: string) => {
+            return request(`${API_BASE}/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password }),
+            });
+        },
         logout: async () => {
-            const res = await fetch(`${API_BASE}/auth/logout`, { method: 'POST' });
-            return res.json();
+            return request(`${API_BASE}/auth/logout`, { method: 'POST' });
         }
     },
     products: {
-        list: async () => {
-            const res = await fetch(`${API_BASE}/products`);
-            if (!res.ok) throw new Error('Failed to fetch products');
-            return res.json();
-        },
-        get: async (id: string) => {
-            const res = await fetch(`${API_BASE}/products/${id}`);
-            if (!res.ok) throw new Error('Failed to fetch product');
-            return res.json();
-        }
+        list: async () => request(`${API_BASE}/products`),
+        get: async (id: string) => request(`${API_BASE}/products/${id}`),
+        create: async (data: any) => request(`${API_BASE}/products`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        update: async (id: string, data: any) => request(`${API_BASE}/products/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        delete: async (id: string) => request(`${API_BASE}/products/${id}`, { method: 'DELETE' }),
     },
     reservations: {
-        list: async () => {
-            const res = await fetch(`${API_BASE}/reservations`);
-            if (!res.ok) throw new Error('Failed to fetch reservations');
-            return res.json();
-        },
-        get: async (id: string) => {
-            const res = await fetch(`${API_BASE}/reservations/${id}`);
-            if (!res.ok) throw new Error('Failed to fetch reservation');
-            return res.json();
-        },
-        create: async (data: any) => {
-            const res = await fetch(`${API_BASE}/reservations`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            if (!res.ok) {
-                const error = await res.json();
-                throw new Error(error.error || 'Failed to create reservation');
-            }
-            return res.json();
-        }
+        list: async () => request(`${API_BASE}/reservations`),
+        get: async (id: string) => request(`${API_BASE}/reservations/${id}`),
+        create: async (data: any) => request(`${API_BASE}/reservations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        update: async (id: string, data: any) => request(`${API_BASE}/reservations/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        delete: async (id: string) => request(`${API_BASE}/reservations/${id}`, { method: 'DELETE' }),
     },
-    // Storage
-    storage: {
-        upload: async (file: File, bucket: string = 'milkyway-assets', folder: string = 'uploads') => {
-            // TODO: Implement R2 upload via API or Signed URL
-            console.log('Upload not implemented yet');
-            return 'https://placehold.co/600x400';
-        }
+    quotes: {
+        list: async () => request(`${API_BASE}/quotes`),
+        get: async (id: string) => request(`${API_BASE}/quotes/${id}`),
+        create: async (data: any) => request(`${API_BASE}/quotes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        update: async (id: string, data: any) => request(`${API_BASE}/quotes/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        delete: async (id: string) => request(`${API_BASE}/quotes/${id}`, { method: 'DELETE' }),
     },
-    // Notifications
+    banners: {
+        get: async () => request(`${API_BASE}/banners`),
+        save: async (data: any) => request(`${API_BASE}/banners`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+    },
+    settings: {
+        get: async (key?: string) => request(`${API_BASE}/settings${key ? `?key=${key}` : ''}`),
+        save: async (key: string, value: any) => request(`${API_BASE}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key, value })
+        }),
+    },
+    faqs: {
+        list: async () => request(`${API_BASE}/faqs`),
+        create: async (data: any) => request(`${API_BASE}/faqs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        update: async (id: string, data: any) => request(`${API_BASE}/faqs/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        delete: async (id: string) => request(`${API_BASE}/faqs/${id}`, { method: 'DELETE' }),
+        bulkSave: async (faqs: any[]) => request(`${API_BASE}/faqs/bulk`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ faqs })
+        }),
+    },
+    faqCategories: {
+        list: async () => request(`${API_BASE}/faq-categories`),
+        create: async (data: any) => request(`${API_BASE}/faq-categories`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        update: async (id: string, data: any) => request(`${API_BASE}/faq-categories/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        delete: async (id: string) => request(`${API_BASE}/faq-categories/${id}`, { method: 'DELETE' }),
+    },
+    reviews: {
+        list: async () => request(`${API_BASE}/reviews`),
+        get: async (id: string) => request(`${API_BASE}/reviews/${id}`),
+        create: async (data: any) => request(`${API_BASE}/reviews`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        update: async (id: string, data: any) => request(`${API_BASE}/reviews/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        delete: async (id: string) => request(`${API_BASE}/reviews/${id}`, { method: 'DELETE' }),
+    },
+    guides: {
+        list: async () => request(`${API_BASE}/guides`),
+        get: async (id: string) => request(`${API_BASE}/guides/${id}`),
+        create: async (data: any) => request(`${API_BASE}/guides`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        update: async (id: string, data: any) => request(`${API_BASE}/guides/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        delete: async (id: string) => request(`${API_BASE}/guides/${id}`, { method: 'DELETE' }),
+        save: async (data: any[]) => request(`${API_BASE}/guides/bulk`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ guides: data })
+        }),
+    },
+    magazines: {
+        list: async () => request(`${API_BASE}/magazines`),
+        get: async (id: string) => request(`${API_BASE}/magazines/${id}`),
+        create: async (data: any) => request(`${API_BASE}/magazines`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        update: async (id: string, data: any) => request(`${API_BASE}/magazines/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        delete: async (id: string) => request(`${API_BASE}/magazines/${id}`, { method: 'DELETE' }),
+    },
+    accommodations: {
+        list: async () => request(`${API_BASE}/accommodations`),
+        get: async (id: string) => request(`${API_BASE}/accommodations/${id}`),
+        create: async (data: any) => request(`${API_BASE}/accommodations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        update: async (id: string, data: any) => request(`${API_BASE}/accommodations/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        delete: async (id: string) => request(`${API_BASE}/accommodations/${id}`, { method: 'DELETE' }),
+        save: async (data: any[]) => request(`${API_BASE}/accommodations/bulk`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accommodations: data })
+        }),
+    },
+    categories: {
+        list: async () => request(`${API_BASE}/categories`),
+        create: async (data: any) => request(`${API_BASE}/categories`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        update: async (id: string, data: any) => request(`${API_BASE}/categories/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        delete: async (id: string) => request(`${API_BASE}/categories/${id}`, { method: 'DELETE' }),
+        bulkSave: async (categories: any[]) => request(`${API_BASE}/categories/bulk`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ categories })
+        }),
+    },
     notifications: {
         sendEmail: async (to: string, type: string, data: any) => {
-            const response = await fetch('/api/notifications/email', {
+            return request('/api/notifications/email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ to, type, data })
             });
-            if (!response.ok) throw new Error('Failed to send email');
-            return response.json();
-        }
+        },
+        list: async () => request(`${API_BASE}/notifications`),
+        update: async (id: string, data: any) => request(`${API_BASE}/notifications/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
     },
-    // Quotes
-    quotes: {
-        list: async () => {
-            const response = await fetch(`${API_BASE}/quotes`);
-            if (!response.ok) throw new Error('Failed to fetch quotes');
-            return response.json();
-        },
-        update: async (id: string, data: any) => {
-            const response = await fetch(`${API_BASE}/quotes/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            if (!response.ok) throw new Error('Failed to update quote');
-            return response.json();
-        },
-        delete: async (id: string) => {
-            const response = await fetch(`${API_BASE}/quotes/${id}`, {
-                method: 'DELETE'
-            });
-            if (!response.ok) throw new Error('Failed to delete quote');
-            return response.json();
-        }
+    travelMates: {
+        list: async () => request(`${API_BASE}/travel-mates`),
+        get: async (id: string) => request(`${API_BASE}/travel-mates/${id}`),
+        create: async (data: any) => request(`${API_BASE}/travel-mates`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        update: async (id: string, data: any) => request(`${API_BASE}/travel-mates/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        delete: async (id: string) => request(`${API_BASE}/travel-mates/${id}`, { method: 'DELETE' }),
     },
-    // Guides
-    guides: {
-        list: async () => {
-            // Placeholder: Returning empty array until backend endpoint is ready
-            // const response = await fetch(`${API_BASE}/guides`);
-            // if (!response.ok) throw new Error('Failed to fetch guides');
-            // return response.json();
-            return [];
-        },
-        get: async (id: string) => {
-            const response = await fetch(`${API_BASE}/guides/${id}`);
-            if (!response.ok) throw new Error('Failed to fetch guide');
-            return response.json();
-        },
-        create: async (data: any) => {
-            const response = await fetch(`${API_BASE}/guides`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            if (!response.ok) throw new Error('Failed to create guide');
-            return response.json();
-        },
-        update: async (id: string, data: any) => {
-            const response = await fetch(`${API_BASE}/guides/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            if (!response.ok) throw new Error('Failed to update guide');
-            return response.json();
-        },
-        delete: async (id: string) => {
-            const response = await fetch(`${API_BASE}/guides/${id}`, {
-                method: 'DELETE'
-            });
-            if (!response.ok) throw new Error('Failed to delete guide');
-            return response.json();
+    chats: {
+        list: async () => request(`${API_BASE}/chats`),
+        get: async (id: string) => request(`${API_BASE}/chats/${id}`),
+        create: async (data: any) => request(`${API_BASE}/chats`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+    },
+    messages: {
+        list: async (roomId: string) => request(`${API_BASE}/messages?room_id=${roomId}`),
+        create: async (data: any) => request(`${API_BASE}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+    },
+    quickLinks: {
+        list: async () => request(`${API_BASE}/quick-links`),
+    },
+    eventBanners: {
+        list: async () => request(`${API_BASE}/event-banners`),
+    },
+    recentlyViewed: {
+        list: async () => request(`${API_BASE}/recently-viewed`),
+        upsert: async (data: any) => request(`${API_BASE}/recently-viewed`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+    },
+    wishlist: {
+        list: async () => request(`${API_BASE}/wishlist`),
+        add: async (data: any) => request(`${API_BASE}/wishlist`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        remove: async (id: string) => request(`${API_BASE}/wishlist/${id}`, { method: 'DELETE' }),
+    },
+    storage: {
+        upload: async (file: File, bucket: string = 'milkyway-assets', folder: string = 'uploads') => {
+            // TODO: Implement R2 upload
+            console.log('Upload not implemented yet');
+            return 'https://placehold.co/600x400';
         }
     },
 };

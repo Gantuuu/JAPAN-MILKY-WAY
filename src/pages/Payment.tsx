@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { sendNotificationEmail } from '../lib/email';
 
 export const Payment: React.FC = () => {
@@ -29,10 +29,12 @@ export const Payment: React.FC = () => {
     // Load bank account settings from Supabase
     useEffect(() => {
         const fetchSettings = async () => {
-            const { data, error } = await supabase.from('settings').select('*').eq('key', 'bank_account').single();
-            if (data?.value) {
-                setBankAccount(data.value);
-            } else {
+            try {
+                const data = await api.settings.get('bank_account');
+                if (data?.value) {
+                    setBankAccount(data.value);
+                }
+            } catch (error) {
                 console.error('Failed to fetch bank account settings:', error);
             }
         };
@@ -42,15 +44,18 @@ export const Payment: React.FC = () => {
     // Auto-fill user info
     useEffect(() => {
         const loadUserInfo = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-                const { user } = session;
-                setCustomerInfo(prev => ({
-                    ...prev,
-                    name: user.user_metadata.full_name || prev.name,
-                    email: user.email || prev.email,
-                    phone: user.phone || user.user_metadata.phone || prev.phone
-                }));
+            try {
+                const me = await api.auth.me();
+                if (me) {
+                    setCustomerInfo(prev => ({
+                        ...prev,
+                        name: me.name || me.full_name || prev.name,
+                        email: me.email || prev.email,
+                        phone: me.phone || prev.phone
+                    }));
+                }
+            } catch (e) {
+                // Ignore if not logged in
             }
         };
         loadUserInfo();
@@ -167,8 +172,8 @@ export const Payment: React.FC = () => {
 
         try {
             setIsProcessing(true);
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
+            const me = await api.auth.me();
+            if (!me) {
                 alert('로그인이 필요합니다.');
                 setIsProcessing(false);
                 return;
@@ -177,7 +182,7 @@ export const Payment: React.FC = () => {
             const now = new Date().toISOString();
 
             const newReservation: any = {
-                user_id: user.id,
+                user_id: me.id,
                 type: isQuote ? 'quote' : 'tour',
                 status: 'pending_payment',
                 product_name: product.name,
@@ -199,30 +204,16 @@ export const Payment: React.FC = () => {
                 newReservation.duration = product.duration || null;
             }
 
-            const { data, error } = await supabase
-                .from('reservations')
-                .insert(newReservation)
-                .select()
-                .single();
-
-            if (error) {
-                throw error;
-            }
-
+            const data = await api.reservations.create(newReservation);
             const reservationId = data.id;
 
             // Update quote status if this is a quote reservation
-            // Update quote status if this is a quote reservation
             if (isQuote && quoteId) {
-                const { error: quoteUpdateError } = await supabase
-                    .from('quotes')
-                    .update({ status: 'converted' })
-                    .eq('id', quoteId);
-
-                if (quoteUpdateError) {
+                try {
+                    await (api.quotes as any).update(quoteId, { status: 'converted' });
+                } catch (quoteUpdateError) {
                     console.error('Failed to update quote status:', quoteUpdateError);
                     // We don't block the reservation flow, but log it
-                    // Maybe show a non-blocking toast?
                 }
             }
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminSidebar } from '../components/admin/AdminSidebar';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 
 interface FAQ {
     id: string;
@@ -50,13 +50,15 @@ export const AdminFAQManage: React.FC = () => {
         document.documentElement.classList.toggle('dark');
     };
 
-    // Fetch data from Supabase
+    // Fetch data from API
     useEffect(() => {
         const fetchData = async () => {
-            const { data: faqData } = await supabase.from('faqs').select('*').order('order');
-            const { data: catData } = await supabase.from('faq_categories').select('*').order('order');
-            if (faqData) setFaqs(faqData.map((f: any) => ({ ...f, isActive: f.is_active, viewCount: f.view_count || 0 })));
-            if (catData) setCategories(catData.map((c: any) => ({ ...c, isActive: c.is_active })));
+            try {
+                const faqData = await api.faqs.list();
+                const catData = await api.faqCategories.list();
+                if (Array.isArray(faqData)) setFaqs(faqData.map((f: any) => ({ ...f, isActive: f.is_active, viewCount: f.view_count || 0 })));
+                if (Array.isArray(catData)) setCategories(catData.map((c: any) => ({ ...c, isActive: c.is_active })));
+            } catch (e) { console.error('Failed to fetch FAQ data', e); }
         };
         fetchData();
     }, []);
@@ -78,16 +80,16 @@ export const AdminFAQManage: React.FC = () => {
         const now = new Date().toISOString();
 
         if (selectedFAQ) {
-            const { error } = await supabase.from('faqs').update({
+            const result = await api.faqs.update(selectedFAQ.id, {
                 category: faqForm.category,
                 question: faqForm.question,
                 answer: faqForm.answer,
                 is_active: faqForm.isActive,
                 updated_at: now
-            }).eq('id', selectedFAQ.id);
+            }) as any;
 
-            if (error) {
-                alert('FAQ 수정 실패: ' + error.message);
+            if (result?.error) {
+                alert('FAQ 수정 실패: ' + (result.error.message || result.error));
                 return;
             }
 
@@ -105,10 +107,10 @@ export const AdminFAQManage: React.FC = () => {
                 created_at: now,
                 updated_at: now
             };
-            const { error } = await supabase.from('faqs').insert(newFaq);
+            const result = await api.faqs.create(newFaq) as any;
 
-            if (error) {
-                alert('FAQ 저장 실패: ' + error.message);
+            if (result?.error) {
+                alert('FAQ 저장 실패: ' + (result.error.message || result.error));
                 return;
             }
 
@@ -123,14 +125,14 @@ export const AdminFAQManage: React.FC = () => {
     // Delete FAQ
     const handleDeleteFAQ = async (id: string) => {
         if (confirm('이 FAQ를 삭제하시겠습니까?')) {
-            await supabase.from('faqs').delete().eq('id', id);
+            await api.faqs.delete(id);
             setFaqs(faqs.filter(f => f.id !== id));
         }
     };
 
     // Toggle FAQ Active
     const toggleFAQActive = async (faq: FAQ) => {
-        await supabase.from('faqs').update({ is_active: !faq.isActive }).eq('id', faq.id);
+        await api.faqs.update(faq.id, { is_active: !faq.isActive });
         setFaqs(faqs.map(f => f.id === faq.id ? { ...f, isActive: !f.isActive } : f));
     };
 
@@ -141,13 +143,13 @@ export const AdminFAQManage: React.FC = () => {
 
         if (direction === 'up' && index > 0) {
             const prev = sorted[index - 1];
-            await supabase.from('faqs').update({ order: prev.order }).eq('id', faq.id);
-            await supabase.from('faqs').update({ order: faq.order }).eq('id', prev.id);
+            await api.faqs.update(faq.id, { order: prev.order });
+            await api.faqs.update(prev.id, { order: faq.order });
             setFaqs(faqs.map(f => f.id === faq.id ? { ...f, order: prev.order } : f.id === prev.id ? { ...f, order: faq.order } : f));
         } else if (direction === 'down' && index < sorted.length - 1) {
             const next = sorted[index + 1];
-            await supabase.from('faqs').update({ order: next.order }).eq('id', faq.id);
-            await supabase.from('faqs').update({ order: faq.order }).eq('id', next.id);
+            await api.faqs.update(faq.id, { order: next.order });
+            await api.faqs.update(next.id, { order: faq.order });
             setFaqs(faqs.map(f => f.id === faq.id ? { ...f, order: next.order } : f.id === next.id ? { ...f, order: faq.order } : f));
         }
     };
@@ -161,28 +163,24 @@ export const AdminFAQManage: React.FC = () => {
 
         if (selectedCategory) {
             // Update Category
-            const { error } = await supabase.from('faq_categories')
-                .update({ name: categoryForm.name, is_active: categoryForm.isActive })
-                .eq('id', selectedCategory.id);
+            const result = await api.faqCategories.update(selectedCategory.id, {
+                name: categoryForm.name,
+                is_active: categoryForm.isActive
+            }) as any;
 
-            if (error) {
-                alert('카테고리 수정 실패: ' + error.message);
+            if (result?.error) {
+                alert('카테고리 수정 실패: ' + (result.error.message || result.error));
                 return;
             }
 
             // If name changed, update all associated FAQs
             if (selectedCategory.name !== categoryForm.name) {
-                const { error: faqError } = await supabase.from('faqs')
-                    .update({ category: categoryForm.name })
-                    .eq('category', selectedCategory.name);
-
-                if (faqError) {
-                    console.error('Failed to cascade category name update to FAQs:', faqError);
-                    alert('카테고리 이름은 변경되었으나, 일부 FAQ의 카테고리 정보 수정에 실패했습니다.');
-                } else {
-                    // Update local faqs state
-                    setFaqs(faqs.map(f => f.category === selectedCategory.name ? { ...f, category: categoryForm.name } : f));
+                // Update FAQs that reference the old category name
+                const affectedFaqs = faqs.filter(f => f.category === selectedCategory.name);
+                for (const faq of affectedFaqs) {
+                    await api.faqs.update(faq.id, { category: categoryForm.name });
                 }
+                setFaqs(faqs.map(f => f.category === selectedCategory.name ? { ...f, category: categoryForm.name } : f));
             }
 
             setCategories(categories.map(c => c.id === selectedCategory.id ? { ...c, ...categoryForm } : c));
@@ -194,10 +192,10 @@ export const AdminFAQManage: React.FC = () => {
                 is_active: categoryForm.isActive,
                 order: maxOrder + 1
             };
-            const { error } = await supabase.from('faq_categories').insert(newCat);
+            const result = await api.faqCategories.create(newCat) as any;
 
-            if (error) {
-                alert('카테고리 추가 실패: ' + error.message);
+            if (result?.error) {
+                alert('카테고리 추가 실패: ' + (result.error.message || result.error));
                 return;
             }
 
@@ -217,7 +215,7 @@ export const AdminFAQManage: React.FC = () => {
             return;
         }
         if (confirm('이 카테고리를 삭제하시겠습니까?')) {
-            await supabase.from('faq_categories').delete().eq('id', id);
+            await api.faqCategories.delete(id);
             setCategories(categories.filter(c => c.id !== id));
         }
     };
@@ -229,13 +227,13 @@ export const AdminFAQManage: React.FC = () => {
 
         if (direction === 'up' && index > 0) {
             const prev = sorted[index - 1];
-            await supabase.from('faq_categories').update({ order: prev.order }).eq('id', cat.id);
-            await supabase.from('faq_categories').update({ order: cat.order }).eq('id', prev.id);
+            await api.faqCategories.update(cat.id, { order: prev.order });
+            await api.faqCategories.update(prev.id, { order: cat.order });
             setCategories(categories.map(c => c.id === cat.id ? { ...c, order: prev.order } : c.id === prev.id ? { ...c, order: cat.order } : c));
         } else if (direction === 'down' && index < sorted.length - 1) {
             const next = sorted[index + 1];
-            await supabase.from('faq_categories').update({ order: next.order }).eq('id', cat.id);
-            await supabase.from('faq_categories').update({ order: cat.order }).eq('id', next.id);
+            await api.faqCategories.update(cat.id, { order: next.order });
+            await api.faqCategories.update(next.id, { order: cat.order });
             setCategories(categories.map(c => c.id === cat.id ? { ...c, order: next.order } : c.id === next.id ? { ...c, order: cat.order } : c));
         }
     };
@@ -420,7 +418,7 @@ export const AdminFAQManage: React.FC = () => {
                                             </td>
                                             <td className="px-4 py-3 text-center">
                                                 <button onClick={async () => {
-                                                    await supabase.from('faq_categories').update({ is_active: !cat.isActive }).eq('id', cat.id);
+                                                    await api.faqCategories.update(cat.id, { is_active: !cat.isActive });
                                                     setCategories(categories.map(c => c.id === cat.id ? { ...c, isActive: !c.isActive } : c));
                                                 }}>
                                                     <span className={`px-2 py-1 rounded text-xs font-bold ${cat.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>

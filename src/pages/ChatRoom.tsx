@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api'; // Changed from supabase
 import { useUser } from '../contexts/UserContext';
 
 interface Message {
@@ -25,36 +25,37 @@ export const ChatRoom: React.FC = () => {
 
         // Fetch Partner Info
         const fetchPartner = async () => {
-            const { data } = await supabase
-                .from('chat_participants')
-                .select('profiles(full_name)')
-                .eq('room_id', roomId)
-                .neq('user_id', user.id)
-                .single();
-
-            if (data?.profiles) {
-                // @ts-ignore
-                setPartnerName(data.profiles.full_name || 'Alwn');
+            try {
+                // Assuming api.chats.get(id) returns room info including participants
+                const room = await api.chats.get(roomId);
+                if (room && room.chat_participants) {
+                    const partner = room.chat_participants.find((p: any) => p.user_id !== user.id);
+                    if (partner && partner.profiles) {
+                        setPartnerName(partner.profiles.full_name || 'Partner');
+                    }
+                }
+            } catch (e) {
+                console.error("Error fetching partner:", e);
             }
         };
 
         // Fetch Messages
         const fetchMessages = async () => {
-            const { data } = await supabase
-                .from('messages')
-                .select('*')
-                .eq('room_id', roomId)
-                .order('created_at', { ascending: true });
-
-            if (data) {
-                setMessages(data);
+            try {
+                const data = await api.messages.list(roomId);
+                if (data) {
+                    setMessages(data);
+                }
+            } catch (e) {
+                console.error("Error fetching messages:", e);
             }
         };
 
         fetchPartner();
         fetchMessages();
 
-        // Realtime Subscription
+        // Realtime Subscription (Disabled for API migration)
+        /*
         const channel = supabase
             .channel(`room:${roomId}`)
             .on(
@@ -75,6 +76,7 @@ export const ChatRoom: React.FC = () => {
         return () => {
             supabase.removeChannel(channel);
         };
+        */
     }, [roomId, user]);
 
     // Auto Scroll
@@ -89,15 +91,18 @@ export const ChatRoom: React.FC = () => {
         const content = newMessage.trim();
         setNewMessage(''); // Optimistic clear
 
-        const { error } = await supabase
-            .from('messages')
-            .insert({
+        try {
+            const result = await api.messages.create({
                 room_id: roomId,
                 user_id: user.id,
                 content: content
             });
 
-        if (error) {
+            // If backend returns the created message, add it (since realtime is off)
+            if (result) {
+                setMessages(prev => [...prev, result]);
+            }
+        } catch (error) {
             console.error('Send error:', error);
             alert('메시지 전송 실패');
         }
@@ -131,8 +136,8 @@ export const ChatRoom: React.FC = () => {
                             >
                                 <div
                                     className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${isMe
-                                            ? 'bg-primary text-white rounded-tr-none shadow-md shadow-primary/20'
-                                            : 'bg-white dark:bg-surface-dark border border-gray-100 dark:border-gray-700 rounded-tl-none shadow-sm dark:text-gray-200'
+                                        ? 'bg-primary text-white rounded-tr-none shadow-md shadow-primary/20'
+                                        : 'bg-white dark:bg-surface-dark border border-gray-100 dark:border-gray-700 rounded-tl-none shadow-sm dark:text-gray-200'
                                         }`}
                                 >
                                     {msg.content}

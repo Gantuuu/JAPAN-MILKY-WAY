@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api'; // Changed from supabase
 import { optimizeImage } from '../utils/imageOptimizer';
 
 interface RecentlyViewedItem {
@@ -20,23 +20,16 @@ export const RecentlyViewed: React.FC = () => {
 
     const fetchRecentlyViewed = async () => {
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
+            const me = await api.auth.me();
+            if (!me) {
                 setLoading(false);
                 return;
             }
 
-            const { data, error } = await supabase
-                .from('recently_viewed')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false })
-                .limit(50);
-
-            if (error) throw error;
+            const data = await api.recentlyViewed.list();
 
             if (data) {
-                const mapped: RecentlyViewedItem[] = data.map(item => ({
+                const mapped: RecentlyViewedItem[] = data.map((item: any) => ({
                     id: item.id,
                     productId: item.product_id,
                     productName: item.title,
@@ -47,6 +40,8 @@ export const RecentlyViewed: React.FC = () => {
                     price: item.price,
                     viewedAt: item.created_at
                 }));
+                // Client-side sort if API doesn't support it yet
+                mapped.sort((a, b) => new Date(b.viewedAt).getTime() - new Date(a.viewedAt).getTime());
                 setRecentlyViewed(mapped);
             }
         } catch (error) {

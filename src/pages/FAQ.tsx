@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { SEO } from '../components/seo/SEO';
 import { BottomNav } from '../components/layout/BottomNav';
 
@@ -15,10 +15,16 @@ export const FAQPage: React.FC = () => {
     // Fetch data from Supabase
     useEffect(() => {
         const fetchData = async () => {
-            const { data: catData } = await supabase.from('faq_categories').select('*').eq('is_active', true).order('order');
-            const { data: faqData } = await supabase.from('faqs').select('*').eq('is_active', true).order('order');
-            if (catData) setCategories(catData.map((c: any) => ({ id: c.id, name: c.name })));
-            if (faqData) setFaqs(faqData.map((f: any) => ({ id: f.id, question: f.question, answer: f.answer, category: f.category, viewCount: f.view_count || 0 })));
+            try {
+                const [catData, faqData] = await Promise.all([
+                    api.faqCategories.list(),
+                    api.faqs.list()
+                ]);
+                if (Array.isArray(catData)) setCategories(catData.filter((c: any) => c.is_active).map((c: any) => ({ id: c.id, name: c.name })));
+                if (Array.isArray(faqData)) setFaqs(faqData.filter((f: any) => f.is_active).map((f: any) => ({ id: f.id, question: f.question, answer: f.answer, category: f.category, viewCount: f.view_count || 0 })));
+            } catch (error) {
+                console.error('Error fetching FAQ data:', error);
+            }
         };
         fetchData();
     }, []);
@@ -40,8 +46,12 @@ export const FAQPage: React.FC = () => {
             setExpandedId(null);
         } else {
             setExpandedId(id);
-            // Increment view count in Supabase
-            await supabase.from('faqs').update({ view_count: faqs.find(f => f.id === id)?.viewCount + 1 }).eq('id', id);
+            // Increment view count via API
+            try {
+                await api.faqs.update(id, { view_count: (faqs.find(f => f.id === id)?.viewCount || 0) + 1 });
+            } catch (error) {
+                console.error('Error updating FAQ view count:', error);
+            }
         }
     };
 

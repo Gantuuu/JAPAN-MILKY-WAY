@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
+
 import { useUser } from '../contexts/UserContext';
 import { useTranslation } from 'react-i18next';
 
@@ -13,31 +14,33 @@ export const MyReviews: React.FC = () => {
 
     useEffect(() => {
         const fetchMyReviews = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+            try {
+                const me = await api.auth.me();
+                if (!me) return;
 
-            const { data, error } = await supabase
-                .from('reviews')
-                .select('*')
-                .eq('author_id', user.id)
-                .order('created_at', { ascending: false });
+                const data = await api.reviews.list();
+                if (data) {
+                    // Client-side filter
+                    const myReviews = data.filter((r: any) => r.user_id === me.id || r.author_id === me.id);
+                    // Sort descending
+                    myReviews.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-            if (data) {
-                // Map DB keys to frontend if needed (or just use snake_case if we update UI)
-                // Current UI uses: id, author, date, rating, productName, content, images, userImage, helpfulCount
-                const mapped = data.map(r => ({
-                    id: r.id,
-                    author: r.author_name,
-                    date: r.created_at,
-                    rating: r.rating,
-                    productName: r.product_name,
-                    content: r.content,
-                    images: r.images,
-                    userImage: r.user_image,
-                    helpfulCount: r.helpful_count,
-                    comments: [] // comments not yet in DB schema linked/fetched here
-                }));
-                setMyReviews(mapped);
+                    const mapped = myReviews.map((r: any) => ({
+                        id: r.id,
+                        author: r.author_name,
+                        date: r.created_at,
+                        rating: r.rating,
+                        productName: r.product_name,
+                        content: r.content,
+                        images: r.images,
+                        userImage: r.user_image,
+                        helpfulCount: r.helpful_count,
+                        comments: []
+                    }));
+                    setMyReviews(mapped);
+                }
+            } catch (e) {
+                console.error('Error fetching my reviews:', e);
             }
         };
         fetchMyReviews();

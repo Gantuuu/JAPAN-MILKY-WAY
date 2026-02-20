@@ -8,7 +8,7 @@ import notificationBell from '../assets/notification_bell.png';
 import wishlistHeart from '../assets/wishlist_heart.png';
 import companionIcon from '../assets/companion_search.png';
 
-import businessEstimateIcon from '../assets/business_estimate.png';
+
 import wishlistIcon from '../assets/wishlist_icon.png';
 import myReviewsIcon from '../assets/my_reviews.png';
 import faqIcon from '../assets/faq_icon.png';

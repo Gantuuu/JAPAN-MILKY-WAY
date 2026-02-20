@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import { api } from '../../lib/api';
 
 interface Guide {
     id: string;
@@ -36,18 +36,22 @@ export const GuideSelectionModal: React.FC<GuideSelectionModalProps> = ({ isOpen
     useEffect(() => {
         if (isOpen) {
             const fetchGuides = async () => {
-                const { data } = await supabase.from('guides').select('*');
-                if (data) {
-                    setGuides(data.map((g: any) => ({
-                        id: g.id,
-                        name: g.name,
-                        image: g.image,
-                        introduction: g.introduction,
-                        phone: g.phone,
-                        kakaoId: g.kakao_id,
-                        languages: g.languages || [],
-                        specialties: g.specialties || []
-                    })));
+                try {
+                    const data = await api.guides.list();
+                    if (Array.isArray(data)) {
+                        setGuides(data.map((g: any) => ({
+                            id: g.id,
+                            name: g.name,
+                            image: g.image,
+                            introduction: g.introduction,
+                            phone: g.phone,
+                            kakaoId: g.kakao_id || g.kakaoId,
+                            languages: g.languages || [],
+                            specialties: g.specialties || []
+                        })));
+                    }
+                } catch (error) {
+                    console.error('Error fetching guides:', error);
                 }
             };
             fetchGuides();
@@ -157,17 +161,21 @@ export const AccommodationSelectionModal: React.FC<AccommodationSelectionModalPr
     useEffect(() => {
         if (isOpen) {
             const fetchAccommodations = async () => {
-                const { data } = await supabase.from('accommodations').select('*');
-                if (data) {
-                    setAccommodations(data.map((a: any) => ({
-                        id: a.id,
-                        name: a.name,
-                        images: a.images || [],
-                        description: a.description,
-                        type: a.type,
-                        location: a.location,
-                        facilities: a.facilities || []
-                    })));
+                try {
+                    const data = await api.accommodations.list();
+                    if (Array.isArray(data)) {
+                        setAccommodations(data.map((a: any) => ({
+                            id: a.id,
+                            name: a.name,
+                            images: a.images || [],
+                            description: a.description,
+                            type: a.type,
+                            location: a.location,
+                            facilities: a.facilities || []
+                        })));
+                    }
+                } catch (error) {
+                    console.error('Error fetching accommodations:', error);
                 }
             };
             fetchAccommodations();

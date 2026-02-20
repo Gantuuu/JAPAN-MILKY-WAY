@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { uploadImage } from '../utils/upload';
 import { AdminSidebar } from '../components/admin/AdminSidebar';
 
@@ -26,20 +26,24 @@ export const AdminReviewManage: React.FC = () => {
         document.documentElement.classList.toggle('dark');
     };
 
-    // Fetch reviews from Supabase
+    // Fetch reviews from API
     const fetchReviews = async () => {
-        const { data } = await supabase.from('reviews').select('*').order('created_at', { ascending: false });
-        if (data) {
-            setReviews(data.map((r: any) => ({
-                id: r.id,
-                author: r.author_name,
-                date: r.created_at ? r.created_at.substring(0, 10) : '',
-                visitDate: r.visit_date,
-                rating: r.rating,
-                product_name: r.product_name,
-                content: r.content,
-                images: r.images
-            })));
+        try {
+            const data = await api.reviews.list();
+            if (Array.isArray(data)) {
+                setReviews(data.map((r: any) => ({
+                    id: r.id,
+                    author: r.author_name,
+                    date: r.created_at ? r.created_at.substring(0, 10) : '',
+                    visitDate: r.visit_date,
+                    rating: r.rating,
+                    product_name: r.product_name,
+                    content: r.content,
+                    images: typeof r.images === 'string' ? JSON.parse(r.images || '[]') : (r.images || [])
+                })));
+            }
+        } catch (error) {
+            console.error('Error fetching reviews:', error);
         }
     };
 
@@ -50,7 +54,7 @@ export const AdminReviewManage: React.FC = () => {
     const handleDelete = async (id: string) => {
         if (window.confirm('정말 이 후기를 삭제하시겠습니까?')) {
             try {
-                await supabase.from('reviews').delete().eq('id', id);
+                await api.reviews.delete(id);
                 setReviews(reviews.filter(r => r.id !== id));
             } catch (error) {
                 console.error('Failed to delete review:', error);
@@ -92,7 +96,7 @@ export const AdminReviewManage: React.FC = () => {
         }
 
         try {
-            const { error } = await supabase.from('reviews').insert({
+            const { error } = await api.reviews.create({
                 author_name: formData.author,
                 visit_date: formData.visitDate,
                 product_name: formData.productName,
@@ -101,7 +105,7 @@ export const AdminReviewManage: React.FC = () => {
                 content: formData.content,
                 images: formData.images,
                 created_at: formData.writtenDate ? new Date(formData.writtenDate).toISOString() : new Date().toISOString()
-            });
+            }) as any;
 
             if (error) throw error;
 

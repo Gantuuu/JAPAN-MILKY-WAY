@@ -1381,23 +1381,18 @@ export const AdminReservationManage: React.FC = () => {
                     onClose={() => setSelectedReservation(null)}
                     onUpdateQuote={async (id, updates) => {
                         try {
-                            const { error } = await supabase
-                                .from('quotes')
-                                .update({
-                                    destination: updates.destination,
-                                    headcount: updates.headcount,
-                                    period: updates.period,
-                                    budget: updates.budget,
-                                    travel_types: updates.travelTypes,
-                                    accommodations: updates.accommodations,
-                                    vehicle: updates.vehicle,
-                                    confirmed_price: updates.confirmed_price,
-                                    deposit: updates.deposit,
-                                    updated_at: new Date().toISOString()
-                                })
-                                .eq('id', id);
-
-                            if (error) throw error;
+                            await api.quotes.update(id, {
+                                destination: updates.destination,
+                                headcount: updates.headcount,
+                                period: updates.period,
+                                budget: updates.budget,
+                                travel_types: updates.travelTypes,
+                                accommodations: updates.accommodations,
+                                vehicle: updates.vehicle,
+                                confirmed_price: updates.confirmed_price,
+                                deposit: updates.deposit,
+                                updated_at: new Date().toISOString()
+                            });
                             fetchReservations();
                         } catch (e) {
                             console.error(e);
@@ -1408,24 +1403,16 @@ export const AdminReservationManage: React.FC = () => {
                         // Handle Send Estimate
                         try {
                             // 1. Update Database
-                            const { error } = await supabase
-                                .from('quotes')
-                                .update({
-                                    status: 'answered',
-                                    admin_note: note,
-                                    estimate_url: url,
-                                    confirmed_price: priceDetail.totalAmount || null,
-                                    deposit: priceDetail.deposit || null,
-                                    confirmed_start_date: confirmedStartDate || null,
-                                    confirmed_end_date: confirmedEndDate || null,
-                                    updated_at: new Date().toISOString()
-                                })
-                                .eq('id', selectedReservation.id);
-
-                            if (error) {
-                                console.error('DB Update Error:', error);
-                                throw new Error(`DB 업데이트 실패: ${error.message}`);
-                            }
+                            await api.quotes.update(selectedReservation.id, {
+                                status: 'answered',
+                                admin_note: note,
+                                estimate_url: url,
+                                confirmed_price: priceDetail.totalAmount || null,
+                                deposit: priceDetail.deposit || null,
+                                confirmed_start_date: confirmedStartDate || null,
+                                confirmed_end_date: confirmedEndDate || null,
+                                updated_at: new Date().toISOString()
+                            });
 
                             // 2. Send Email (Separate try-catch to not block UI success if email fails)
                             try {
@@ -1518,8 +1505,8 @@ export const AdminReservationManage: React.FC = () => {
                             alert(`예약 생성 실패: ${e.message}`);
                         }
                     }}
-            />
-        )}
+                />
+            )}
         </div>
     );
 };

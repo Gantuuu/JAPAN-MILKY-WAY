@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient'; // Changed from db
+import { api } from '../lib/api'; // Changed from supabase
 import { BottomNav } from '../components/layout/BottomNav';
 
 // Define Review type locally or import if available, matching Supabase + Frontend needs
@@ -23,30 +23,30 @@ export const UserReviews: React.FC = () => {
     const [allReviews, setAllReviews] = useState<Review[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Fetch all reviews from Supabase
+    // Fetch all reviews from API
     useEffect(() => {
         const fetchReviews = async () => {
             setIsLoading(true);
-            const { data, error } = await supabase
-                .from('reviews')
-                .select('*')
-                .order('created_at', { ascending: false });
+            try {
+                const data = await api.reviews.list();
 
-            if (data) {
-                // Map Supabase rows to component state
-                const mapped: Review[] = data.map((r: any) => ({
-                    id: r.id,
-                    author: r.author_name,
-                    date: r.created_at ? r.created_at.substring(0, 10) : '',
-                    rating: r.rating,
-                    title: r.title,
-                    productName: r.product_name,
-                    productId: r.product_id,
-                    content: r.content,
-                    images: r.images || [],
-                    userImage: r.user_image
-                }));
-                setAllReviews(mapped);
+                if (data) {
+                    const mapped: Review[] = data.map((r: any) => ({
+                        id: r.id,
+                        author: r.author_name,
+                        date: r.created_at ? r.created_at.substring(0, 10) : '',
+                        rating: r.rating,
+                        title: r.title,
+                        productName: r.product_name,
+                        productId: r.product_id,
+                        content: r.content,
+                        images: r.images || [],
+                        userImage: r.user_image
+                    }));
+                    setAllReviews(mapped);
+                }
+            } catch (e) {
+                console.error("Error fetching reviews:", e);
             }
             setIsLoading(false);
         };

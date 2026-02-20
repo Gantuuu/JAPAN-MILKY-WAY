@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdminSidebar } from '../components/admin/AdminSidebar';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -191,15 +191,11 @@ export const AdminCalendar: React.FC = () => {
 
     const fetchEvents = async () => {
         try {
-            const { data, error } = await supabase
-                .from('reservations')
-                .select('*')
-                .in('status', ['confirmed', 'paid']);
+            const data = await api.reservations.list();
 
-            if (error) throw error;
-
-            if (data) {
-                const mappedEvents: Reservation[] = data.map((res: any) => ({
+            if (Array.isArray(data)) {
+                const filtered = data.filter((res: any) => res.status === 'confirmed' || res.status === 'paid');
+                const mappedEvents: Reservation[] = filtered.map((res: any) => ({
                     id: res.id,
                     type: res.type || 'product',
                     productName: res.product_name,

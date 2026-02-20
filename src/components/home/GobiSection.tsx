@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabaseClient';
+import { api } from '../../lib/api';
 import { getOptimizedImageUrl } from '../../utils/supabaseImage';
 
 export const GobiSection: React.FC = () => {
@@ -9,17 +9,22 @@ export const GobiSection: React.FC = () => {
 
     React.useEffect(() => {
         const fetchProducts = async () => {
-            const { data, error } = await supabase.from('products').select('*').eq('category', '고비사막').limit(4);
-            if (data && !error) {
-                setProducts(data.map((p: any) => ({
-                    id: p.id,
-                    name: p.name,
-                    category: p.category,
-                    price: p.price,
-                    mainImages: p.main_images || [],
-                    isPopular: p.is_popular,
-                    tags: p.tags || []
-                })));
+            try {
+                const data = await api.products.list();
+                if (Array.isArray(data)) {
+                    const gobiData = data.filter((p: any) => p.category === '고비사막').slice(0, 4);
+                    setProducts(gobiData.map((p: any) => ({
+                        id: p.id,
+                        name: p.name,
+                        category: p.category,
+                        price: p.price,
+                        mainImages: p.main_images || [],
+                        isPopular: p.is_popular,
+                        tags: p.tags || []
+                    })));
+                }
+            } catch (error) {
+                console.error('Error fetching Gobi products:', error);
             }
         };
         fetchProducts();

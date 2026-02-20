@@ -23,8 +23,7 @@ const ReviewDetail = lazy(() => import('./pages/ReviewDetail').then(module => ({
 const CustomEstimate = lazy(() => import('./pages/CustomEstimate').then(module => ({ default: module.CustomEstimate })))
 const EstimateDetail = lazy(() => import('./pages/EstimateDetail').then(module => ({ default: module.EstimateDetail })))
 const EstimateComplete = lazy(() => import('./pages/EstimateComplete').then(module => ({ default: module.EstimateComplete })))
-const BusinessEstimate = lazy(() => import('./pages/BusinessEstimate').then(module => ({ default: module.BusinessEstimate })))
-const BusinessEstimateDetail = lazy(() => import('./pages/BusinessEstimateDetail').then(module => ({ default: module.BusinessEstimateDetail })))
+
 const TravelMates = lazy(() => import('./pages/TravelMates').then(module => ({ default: module.TravelMates })))
 const TravelMateDetail = lazy(() => import('./pages/TravelMateDetail').then(module => ({ default: module.TravelMateDetail })))
 const TravelMateWrite = lazy(() => import('./pages/TravelMateWrite').then(module => ({ default: module.TravelMateWrite })))
@@ -40,7 +39,7 @@ const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(module => 
 const MyPage = lazy(() => import('./pages/MyPage').then(module => ({ default: module.MyPage })))
 const MyTravelMates = lazy(() => import('./pages/MyTravelMates').then(module => ({ default: module.MyTravelMates })))
 const MyEstimates = lazy(() => import('./pages/MyEstimates').then(module => ({ default: module.MyEstimates })))
-const MyBusinessEstimates = lazy(() => import('./pages/MyBusinessEstimates').then(module => ({ default: module.MyBusinessEstimates })))
+
 const MyReservations = lazy(() => import('./pages/MyReservations').then(module => ({ default: module.MyReservations })))
 const MyNotifications = lazy(() => import('./pages/MyNotifications').then(module => ({ default: module.MyNotifications })))
 const MyReviews = lazy(() => import('./pages/MyReviews').then(module => ({ default: module.MyReviews })))
@@ -98,8 +97,7 @@ function App() {
             <Route path="/custom-estimate" element={<CustomEstimate />} />
             <Route path="/estimate/:id" element={<EstimateDetail />} />
             <Route path="/estimate-complete" element={<EstimateComplete />} />
-            <Route path="/business-estimate" element={<BusinessEstimate />} />
-            <Route path="/business-estimate/:id" element={<BusinessEstimateDetail />} />
+
             <Route path="/travel-mates" element={<TravelMates />} />
             <Route path="/travel-mates/:id" element={<TravelMateDetail />} />
             <Route path="/travel-mates/write" element={<TravelMateWrite />} />
@@ -110,7 +108,7 @@ function App() {
             <Route path="/mypage" element={<MyPage />} />
             <Route path="/mypage/travel-mates" element={<AuthGuard><MyTravelMates /></AuthGuard>} />
             <Route path="/mypage/estimates" element={<AuthGuard><MyEstimates /></AuthGuard>} />
-            <Route path="/mypage/business-estimates" element={<AuthGuard><MyBusinessEstimates /></AuthGuard>} />
+
             <Route path="/mypage/reservations" element={<AuthGuard><MyReservations /></AuthGuard>} />
             <Route path="/mypage/notifications" element={<AuthGuard><MyNotifications /></AuthGuard>} />
             <Route path="/mypage/reviews" element={<AuthGuard><MyReviews /></AuthGuard>} />

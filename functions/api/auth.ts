@@ -1,12 +1,46 @@
 import { Hono } from 'hono';
 import { generateState, generateCodeVerifier, Google } from 'arctic';
 import { initializeLucia } from '../lib/auth';
+import { verifyPassword } from '../lib/password';
 import { setCookie, getCookie } from 'hono/cookie';
 import { drizzle } from 'drizzle-orm/d1';
 import { users } from '../../src/db/schema/auth';
 import { eq } from 'drizzle-orm';
 
 const app = new Hono<{ Bindings: Env }>();
+
+// POST /api/auth/login - Admin email/password login
+app.post('/login', async (c) => {
+    const { email, password } = await c.req.json();
+
+    if (!email || !password) {
+        return c.json({ error: 'Email and password are required' }, 400);
+    }
+
+    const db = drizzle(c.env.DB);
+    const existingUser = await db.select().from(users).where(eq(users.email, email)).get();
+
+    if (!existingUser || !existingUser.passwordHash) {
+        return c.json({ error: 'Invalid email or password' }, 401);
+    }
+
+    if (existingUser.role !== 'admin') {
+        return c.json({ error: 'Access denied' }, 403);
+    }
+
+    const isValid = await verifyPassword(password, existingUser.passwordHash);
+    if (!isValid) {
+        return c.json({ error: 'Invalid email or password' }, 401);
+    }
+
+    const lucia = initializeLucia(c.env.DB);
+    const session = await lucia.createSession(existingUser.id, {});
+    const sessionCookie = lucia.createSessionCookie(session.id);
+
+    c.header("Set-Cookie", sessionCookie.serialize(), { append: true });
+
+    return c.json({ success: true, user: { id: existingUser.id, email: existingUser.email, name: existingUser.name, role: existingUser.role } });
+});
 
 // GET /api/auth/login/google
 app.get('/login/google', async (c) => {

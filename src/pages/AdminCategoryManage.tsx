@@ -1,6 +1,6 @@
 // Migrated to Supabase
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { uploadImage } from '../utils/upload';
 import { AdminSidebar } from '../components/admin/AdminSidebar';
 import { DEFAULT_CATEGORIES, DEFAULT_MAGAZINE_CATEGORIES, type Category } from '../types/category';
@@ -11,27 +11,28 @@ export const AdminCategoryManage: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
     const [categories, setCategories] = useState<Category[]>([]);
 
-    // Fetch categories from Supabase
+    // Fetch categories from API
     const fetchCategories = async () => {
-        const { data } = await supabase
-            .from('categories')
-            .select('*')
-            .or('type.eq.product,type.is.null')
-            .order('order');
+        try {
+            const data = await api.categories.list();
 
-        if (data && data.length > 0) {
-            setCategories(data.map((c: any) => ({
-                id: c.id,
-                icon: c.icon,
-                name: c.name,
-                description: c.description,
-                isActive: c.is_active,
-                order: c.order,
-                type: c.type || 'product'
-            })));
-        } else {
-            // Seed default categories if empty
-            await seedDefaultCategories();
+            if (Array.isArray(data) && data.length > 0) {
+                const productCats = data.filter((c: any) => c.type === 'product' || !c.type);
+                setCategories(productCats.map((c: any) => ({
+                    id: c.id,
+                    icon: c.icon,
+                    name: c.name,
+                    description: c.description,
+                    isActive: c.is_active,
+                    order: c.order,
+                    type: c.type || 'product'
+                })));
+            } else {
+                // Seed default categories if empty
+                await seedDefaultCategories();
+            }
+        } catch (error) {
+            console.error('Error fetching categories:', error);
         }
     };
 
@@ -45,7 +46,9 @@ export const AdminCategoryManage: React.FC = () => {
             order: idx,
             type: 'product'
         }));
-        await supabase.from('categories').insert(inserts);
+        for (const cat of inserts) {
+            await api.categories.create(cat);
+        }
 
         // Also seed magazine categories
         const magInserts = DEFAULT_MAGAZINE_CATEGORIES.map((c, idx) => ({
@@ -57,7 +60,9 @@ export const AdminCategoryManage: React.FC = () => {
             order: idx,
             type: 'magazine'
         }));
-        await supabase.from('categories').insert(magInserts);
+        for (const cat of magInserts) {
+            await api.categories.create(cat);
+        }
 
         fetchCategories();
     };
@@ -76,7 +81,7 @@ export const AdminCategoryManage: React.FC = () => {
     // Toggle active status
     const toggleActive = async (id: string, currentStatus: boolean) => {
         try {
-            await supabase.from('categories').update({ is_active: !currentStatus }).eq('id', id);
+            await api.categories.update(id, { is_active: !currentStatus });
             fetchCategories();
         } catch (error) {
             alert('업데이트 실패: ' + error);
@@ -91,7 +96,7 @@ export const AdminCategoryManage: React.FC = () => {
         }
         if (confirm('정말 이 카테고리를 삭제하시겠습니까?')) {
             try {
-                await supabase.from('categories').delete().eq('id', id);
+                await api.categories.delete(id);
                 fetchCategories();
             } catch (error) {
                 alert('삭제 실패: ' + error);
@@ -110,8 +115,8 @@ export const AdminCategoryManage: React.FC = () => {
         const targetCat = sortedCategories[newIndex];
 
         // Swap orders
-        await supabase.from('categories').update({ order: targetCat.order }).eq('id', currentCat.id);
-        await supabase.from('categories').update({ order: currentCat.order }).eq('id', targetCat.id);
+        await api.categories.update(currentCat.id, { order: targetCat.order });
+        await api.categories.update(targetCat.id, { order: currentCat.order });
         fetchCategories();
     };
 
@@ -119,12 +124,12 @@ export const AdminCategoryManage: React.FC = () => {
         try {
             if (selectedCategory) {
                 // Update
-                await supabase.from('categories').update({
+                await api.categories.update(category.id, {
                     icon: category.icon,
                     name: category.name,
                     description: category.description,
                     is_active: category.isActive
-                }).eq('id', category.id);
+                });
             } else {
                 // Add New
                 const newCategory = {
@@ -136,7 +141,7 @@ export const AdminCategoryManage: React.FC = () => {
                     order: sortedCategories.length,
                     type: 'product'
                 };
-                await supabase.from('categories').insert(newCategory);
+                await api.categories.create(newCategory);
             }
             setIsModalOpen(false);
             setSelectedCategory(null);

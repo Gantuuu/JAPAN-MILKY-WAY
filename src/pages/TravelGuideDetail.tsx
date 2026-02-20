@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api'; // Changed from supabase
 import { BottomNav } from '../components/layout/BottomNav';
 import { SEO } from '../components/seo/SEO';
 import { SimpleSlider } from '../components/ui/SimpleSlider';
@@ -28,51 +28,54 @@ export const TravelGuideDetail: React.FC = () => {
             if (!id) return;
             setLoading(true);
 
-            // 1. Fetch current magazine
-            const { data: magData, error } = await supabase
-                .from('magazines')
-                .select('*')
-                .eq('id', id)
-                .single();
+            try {
+                // 1. Fetch current magazine
+                const magData = await api.magazines.get(id);
 
-            if (error || !magData) {
-                console.error('Error fetching magazine:', error);
-                setLoading(false);
-                return;
-            }
+                if (!magData) {
+                    console.error('Magazine not found');
+                    setLoading(false);
+                    return;
+                }
 
-            const currentMagazine = {
-                id: magData.id,
-                title: magData.title,
-                description: magData.description,
-                content: magData.content,
-                category: magData.category,
-                image: magData.image,
-                tag: magData.tag,
-                createdAt: magData.created_at
-            };
-            setMagazine(currentMagazine);
+                const currentMagazine = {
+                    id: magData.id,
+                    title: magData.title,
+                    description: magData.description,
+                    content: magData.content,
+                    category: magData.category,
+                    image: magData.image,
+                    tag: magData.tag,
+                    createdAt: magData.created_at
+                };
+                setMagazine(currentMagazine);
 
-            // 2. Fetch related magazines
-            const { data: relatedData } = await supabase
-                .from('magazines')
-                .select('*')
-                .eq('category', magData.category)
-                .neq('id', id)
-                .eq('is_active', true)
-                .limit(3);
+                // 2. Fetch related magazines
+                // API doesn't have a direct filtering endpoint for this, so we fetch all and filter client-side
+                // In a production environment with many items, a specific endpoint would be better.
+                const allMagazines = await api.magazines.list();
+                if (Array.isArray(allMagazines)) {
+                    const relatedData = allMagazines
+                        .filter((m: any) =>
+                            m.category === magData.category &&
+                            m.id !== id &&
+                            (m.is_active ?? true)
+                        )
+                        .slice(0, 3);
 
-            if (relatedData) {
-                setRelatedMagazines(relatedData.map((m: any) => ({
-                    id: m.id,
-                    title: m.title,
-                    description: m.description,
-                    content: m.content,
-                    category: m.category,
-                    image: m.image,
-                    tag: m.tag,
-                    createdAt: m.created_at
-                })));
+                    setRelatedMagazines(relatedData.map((m: any) => ({
+                        id: m.id,
+                        title: m.title,
+                        description: m.description,
+                        content: m.content,
+                        category: m.category,
+                        image: m.image,
+                        tag: m.tag,
+                        createdAt: m.created_at
+                    })));
+                }
+            } catch (error) {
+                console.error('Error fetching magazine details:', error);
             }
             setLoading(false);
         };

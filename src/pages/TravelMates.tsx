@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { useUser } from '../contexts/UserContext';
 import { BottomNav } from '../components/layout/BottomNav';
 import { optimizeImage } from '../utils/imageOptimizer';
 import notificationBell from '../assets/notification_bell.png';
+import { useTranslation } from 'react-i18next';
 
 export const TravelMates: React.FC = () => {
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState('전체');
+    const { t } = useTranslation();
+    const [activeTab, setActiveTab] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [posts, setPosts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -22,34 +24,33 @@ export const TravelMates: React.FC = () => {
         style: '' as string
     });
 
-    // Fetch travel mates from Supabase
+    // Fetch travel mates from API
     React.useEffect(() => {
         const fetchPosts = async () => {
             setLoading(true);
-            const { data, error } = await supabase
-                .from('travel_mates')
-                .select('*')
-                .order('created_at', { ascending: false });
+            try {
+                const data = await api.travelMates.list();
 
-            if (error) {
+                if (data) {
+                    // Map snake_case to camelCase
+                    const mappedPosts = data.map((post: any) => ({
+                        ...post,
+                        startDate: post.start_date,
+                        endDate: post.end_date,
+                        recruitCount: post.recruit_count,
+                        ageGroups: post.age_groups || [],
+                        styles: post.styles || [],
+                        gender: post.gender,
+                        authorImage: post.author_image,
+                        authorName: post.author_name,
+                        authorInfo: post.author_info,
+                        createdAt: post.created_at,
+                        updatedAt: post.updated_at
+                    }));
+                    setPosts(mappedPosts);
+                }
+            } catch (error) {
                 console.error('Error fetching travel mates:', error);
-            } else if (data) {
-                // Map snake_case to camelCase
-                const mappedPosts = data.map(post => ({
-                    ...post,
-                    startDate: post.start_date,
-                    endDate: post.end_date,
-                    recruitCount: post.recruit_count,
-                    ageGroups: post.age_groups || [],
-                    styles: post.styles || [],
-                    gender: post.gender,
-                    authorImage: post.author_image,
-                    authorName: post.author_name,
-                    authorInfo: post.author_info,
-                    createdAt: post.created_at,
-                    updatedAt: post.updated_at
-                }));
-                setPosts(mappedPosts);
             }
             setLoading(false);
         };
@@ -59,7 +60,28 @@ export const TravelMates: React.FC = () => {
     // Filter posts based on active tab and search query
     const filteredPosts = posts.filter(post => {
         // 1. Tab & Search Filter
-        const matchesTab = activeTab === '전체' || (post.region && post.region.includes(activeTab));
+        // Note: post.region might be in Korean or need mapping. Ideally backend returns code or we map.
+        // For now, let's assume 'all' matches everything, and specific tabs match region string including translated ones.
+        // Current tabs: 'all', 'central_mongolia', 'gobi_desert', 'khuvsgul', 'trekking', 'golf'
+        let regionMatch = true;
+
+        if (activeTab !== 'all') {
+            // Map activeTab key to potential region strings found in DB 
+            // (This is a bit tricky if DB has mixed lang, but let's try to match by key concept or translated string)
+            // Simple approach: Check if post.region includes the translated string of the active key
+            const tabLabel = t(`travel_mates.tabs.${activeTab}`);
+            regionMatch = post.region && post.region.includes(tabLabel) || post.region.includes(activeTab);
+
+            // Fallback for kr database
+            if (activeTab === 'central_mongolia' && post.region.includes('중앙몽골')) regionMatch = true;
+            if (activeTab === 'gobi_desert' && post.region.includes('고비사막')) regionMatch = true;
+            if (activeTab === 'khuvsgul' && post.region.includes('홉스골')) regionMatch = true;
+            if (activeTab === 'trekking' && post.region.includes('트레킹')) regionMatch = true;
+            if (activeTab === 'golf' && post.region.includes('골프')) regionMatch = true;
+        }
+
+        const matchesTab = regionMatch;
+
         const matchesSearch = searchQuery === '' ||
             post.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             post.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -68,11 +90,9 @@ export const TravelMates: React.FC = () => {
         // 2. Advanced Filters
         let matchesFilters = true;
 
-        // Date Filter (Logic: Check if selected date is within start/end range)
-        // Note: Dates are stored as 'M.D' strings. We assume current year for comparison.
+        // Date Filter
         if (filters.date) {
             const selected = new Date(filters.date);
-            // Parse post dates (Assume current year)
             const currentYear = new Date().getFullYear();
             const [startM, startD] = post.startDate.split('.').map(Number);
             const postStart = new Date(currentYear, startM - 1, startD);
@@ -83,11 +103,6 @@ export const TravelMates: React.FC = () => {
                 postEnd = new Date(currentYear, endM - 1, endD);
             }
 
-            // Check if selected date is roughly within range (or same month)
-            // For strict range: selected >= postStart && selected <= postEnd
-            // For basic "trip in this month" logic, we can just check overlap or simplified logic.
-            // Let's go with exact range inclusive.
-            // Reset hours for comparison
             selected.setHours(0, 0, 0, 0);
             postStart.setHours(0, 0, 0, 0);
             postEnd.setHours(0, 0, 0, 0);
@@ -97,23 +112,45 @@ export const TravelMates: React.FC = () => {
             }
         }
 
-        // Gender Filter (If user picks 'Male', show 'Male' or 'Any')
+        // Gender Filter
         if (matchesFilters && filters.gender) {
-            if (filters.gender === '남성') {
-                if (post.gender !== '남성' && post.gender !== '무관') matchesFilters = false;
-            } else if (filters.gender === '여성') {
-                if (post.gender !== '여성' && post.gender !== '무관') matchesFilters = false;
+            // gender filter logic: 
+            // DB has '남성', '여성', '무관'. 
+            // We need to map filter selection to these.
+            // filter.gender values: 'male', 'female', ''
+
+            if (filters.gender === 'male') {
+                if (post.gender !== '남성' && post.gender !== '무관' && post.gender !== 'male' && post.gender !== 'any') matchesFilters = false;
+            } else if (filters.gender === 'female') {
+                if (post.gender !== '여성' && post.gender !== '무관' && post.gender !== 'female' && post.gender !== 'any') matchesFilters = false;
             }
         }
 
-        // Age Filter (If selected '20s', show posts allowing '20s')
+        // Age Filter
         if (matchesFilters && filters.age) {
-            if (!post.ageGroups.includes(filters.age)) matchesFilters = false;
+            // filters.age is like '20s', '30s'. 
+            // DB ageGroups is likely ['20대', '30대'] or ['20s', '30s'].
+            // Need mapping if DB is Korean.
+            const ageMap: Record<string, string> = { '20s': '20대', '30s': '30대', '40s': '40대', '50s_plus': '50대+' };
+            const targetAge = ageMap[filters.age] || filters.age;
+
+            if (!post.ageGroups.some((g: string) => g === targetAge || g === filters.age)) matchesFilters = false;
         }
 
-        // Style Filter (If selected 'Healing', show posts having 'Healing')
+        // Style Filter
         if (matchesFilters && filters.style) {
-            if (!post.styles.includes(filters.style)) matchesFilters = false;
+            // filters.style is 'healing', 'photo', etc.
+            // DB styles is ['🏞️ 힐링', ...]
+            const styleMap: Record<string, string> = {
+                'healing': '🏞️ 힐링',
+                'photo': '📸 인생샷',
+                'activity': '💪 액티비티',
+                'food': '🍽️ 맛집 탐방',
+                'camping': '⛺ 캠핑/차박'
+            };
+            const targetStyle = styleMap[filters.style] || filters.style;
+
+            if (!post.styles.some((s: string) => s === targetStyle || s === filters.style)) matchesFilters = false;
         }
 
         return matchesTab && matchesSearch && matchesFilters;
@@ -124,6 +161,8 @@ export const TravelMates: React.FC = () => {
         setActiveFilter(null);
     };
 
+    const tabs = ['all', 'central_mongolia', 'gobi_desert', 'khuvsgul', 'trekking', 'golf'];
+
     return (
         <div className="bg-[#f9fafc] dark:bg-background-dark text-text-main-light dark:text-text-main-dark font-display antialiased overflow-x-hidden min-h-screen">
             <div className={`relative flex h-full min-h-screen w-full flex-col pb-24 ${activeFilter ? 'overflow-hidden h-screen' : ''}`}>
@@ -131,10 +170,10 @@ export const TravelMates: React.FC = () => {
                 <div className="sticky top-0 z-40 bg-card-light dark:bg-card-dark shadow-sm">
                     <div className="flex items-center justify-between px-5 pt-4 pb-2">
                         <button onClick={() => navigate('/')} className="text-2xl font-bold tracking-tight text-text-main-light dark:text-text-main-dark">
-                            동행 찾기
+                            {t('travel_mates.title')}
                         </button>
                         <button className="relative p-2 -mr-2 rounded-full hover:scale-105 transition-transform">
-                            <img src={notificationBell} alt="알림" className="w-7 h-7 object-contain" />
+                            <img src={notificationBell} alt={t('header.notification')} className="w-7 h-7 object-contain" />
                             <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500 border-2 border-white dark:border-card-dark"></span>
                         </button>
                     </div>
@@ -147,7 +186,7 @@ export const TravelMates: React.FC = () => {
                             </div>
                             <input
                                 className="w-full bg-transparent border-none focus:ring-0 outline-none text-base font-medium placeholder:text-text-sub-light/70 dark:placeholder:text-text-sub-dark/70 px-3 text-text-main-light dark:text-text-main-dark"
-                                placeholder="도시나 국가를 검색해보세요"
+                                placeholder={t('travel_mates.search_placeholder')}
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
@@ -157,7 +196,7 @@ export const TravelMates: React.FC = () => {
                     {/* Category Tabs */}
                     <div className="border-b border-gray-100 dark:border-gray-800">
                         <div className="flex overflow-x-auto no-scrollbar px-5 gap-6">
-                            {['전체', '중앙몽골', '고비사막', '홉스골', '트레킹', '골프'].map((tab) => (
+                            {tabs.map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
@@ -166,7 +205,7 @@ export const TravelMates: React.FC = () => {
                                         : 'border-transparent text-text-sub-light dark:text-text-sub-dark hover:text-text-main-light dark:hover:text-text-main-dark'
                                         } `}
                                 >
-                                    {tab}
+                                    {t(`travel_mates.tabs.${tab}`)}
                                 </button>
                             ))}
                         </div>
@@ -175,10 +214,10 @@ export const TravelMates: React.FC = () => {
                     {/* Filters */}
                     <div className="flex overflow-x-auto no-scrollbar px-5 py-3 gap-2 bg-card-light dark:bg-card-dark">
                         {[
-                            { key: 'date', label: filters.date ? filters.date.slice(5) : '날짜' },
-                            { key: 'gender', label: filters.gender || '성별' },
-                            { key: 'age', label: filters.age || '연령대' },
-                            { key: 'style', label: filters.style?.split(' ')[1] || '여행 스타일' }
+                            { key: 'date', label: filters.date ? filters.date.slice(5) : t('travel_mates.filters.date') },
+                            { key: 'gender', label: filters.gender ? t(`travel_mates.filters.gender_${filters.gender}`) : t('travel_mates.filters.gender') },
+                            { key: 'age', label: filters.age ? t(`travel_mates.filters.age_${filters.age}`) : t('travel_mates.filters.age') },
+                            { key: 'style', label: filters.style ? t(`travel_mates.filters.style_${filters.style}`) : t('travel_mates.filters.style') }
                         ].map((filter) => (
                             <button
                                 key={filter.key}
@@ -197,7 +236,7 @@ export const TravelMates: React.FC = () => {
                                 onClick={handleFilterReset}
                                 className="flex shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-xs text-gray-500"
                             >
-                                초기화
+                                {t('travel_mates.reset')}
                             </button>
                         )}
                     </div>
@@ -208,7 +247,7 @@ export const TravelMates: React.FC = () => {
                     {filteredPosts.length === 0 ? (
                         <div className="text-center py-20">
                             <span className="material-symbols-outlined text-5xl text-gray-300 dark:text-gray-600">group_off</span>
-                            <p className="mt-4 text-gray-500 dark:text-gray-400">조건에 맞는 동행 게시물이 없습니다.</p>
+                            <p className="mt-4 text-gray-500 dark:text-gray-400">{t('travel_mates.empty.title')}</p>
                             {(searchQuery || filters.date || filters.gender || filters.age || filters.style) ? (
                                 <button
                                     onClick={() => {
@@ -217,14 +256,14 @@ export const TravelMates: React.FC = () => {
                                     }}
                                     className="mt-4 text-primary font-bold text-sm"
                                 >
-                                    검색/필터 초기화
+                                    {t('travel_mates.search_reset')}
                                 </button>
                             ) : (
                                 <button
                                     onClick={() => navigate('/travel-mates/write')}
                                     className="mt-4 bg-primary text-white px-6 py-2 rounded-full font-bold text-sm"
                                 >
-                                    첫 번째 게시물 작성하기
+                                    {t('travel_mates.post.first_post_button')}
                                 </button>
                             )}
                         </div>
@@ -240,7 +279,7 @@ export const TravelMates: React.FC = () => {
                                     <div>
                                         <div className="flex items-center gap-2 mb-1">
                                             {post.status === 'closed' && (
-                                                <span className="text-[10px] font-bold bg-gray-200 dark:bg-gray-700 text-gray-500 px-1.5 py-0.5 rounded">모집완료</span>
+                                                <span className="text-[10px] font-bold bg-gray-200 dark:bg-gray-700 text-gray-500 px-1.5 py-0.5 rounded">{t('travel_mates.post.recruit_completed')}</span>
                                             )}
                                         </div>
                                         <h3 className={`text-[16px] font-bold leading-snug mb-2 line-clamp-2 ${post.status === 'closed' ? 'text-gray-500 line-through decoration-gray-400' : 'text-text-main-light dark:text-text-main-dark'}`}>
@@ -255,17 +294,10 @@ export const TravelMates: React.FC = () => {
                                                 {post.duration && <span className="text-gray-400 ml-1">({post.duration})</span>}
                                             </div>
                                             <div className="text-[13px] text-primary font-bold">
-                                                1명 / {post.recruitCount}명
+                                                {t('travel_mates.post.person_count', { count: post.recruitCount })}
                                             </div>
                                         </div>
                                     </div>
-
-                                    {/* Tags (Optional - maybe hidden for compactness or minimal) */}
-                                    {/* <div className="flex gap-1 mt-2">
-                                        {post.styles.slice(0, 2).map((style: string, idx: number) => (
-                                            <span key={idx} className="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded text-xs">{style}</span>
-                                        ))}
-                                    </div> */}
                                 </div>
 
                                 {/* Right Image */}
@@ -289,7 +321,7 @@ export const TravelMates: React.FC = () => {
                     className="fixed bottom-24 right-5 z-40 bg-primary hover:bg-[#159e82] text-white rounded-full p-4 shadow-lg shadow-primary/30 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
                 >
                     <span className="material-symbols-outlined text-[24px]">edit_square</span>
-                    <span className="font-bold text-[15px] pr-1">글쓰기</span>
+                    <span className="font-bold text-[15px] pr-1">{t('travel_mates.post.write_button')}</span>
                 </button>
 
                 <BottomNav />
@@ -303,10 +335,10 @@ export const TravelMates: React.FC = () => {
                         >
                             <div className="flex items-center justify-between mb-6">
                                 <h3 className="text-xl font-bold dark:text-white">
-                                    {activeFilter === 'date' && '날짜 선택'}
-                                    {activeFilter === 'gender' && '성별 선택'}
-                                    {activeFilter === 'age' && '연령대 선택'}
-                                    {activeFilter === 'style' && '여행 스타일 선택'}
+                                    {activeFilter === 'date' && t('travel_mates.modal.select_date')}
+                                    {activeFilter === 'gender' && t('travel_mates.modal.select_gender')}
+                                    {activeFilter === 'age' && t('travel_mates.modal.select_age')}
+                                    {activeFilter === 'style' && t('travel_mates.modal.select_style')}
                                 </h3>
                                 <button onClick={() => setActiveFilter(null)} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                                     <span className="material-symbols-outlined">close</span>
@@ -317,7 +349,7 @@ export const TravelMates: React.FC = () => {
                                 {/* Date Content */}
                                 {activeFilter === 'date' && (
                                     <div className="flex flex-col gap-4">
-                                        <p className="text-sm text-gray-500">여행 시작일이 포함된 날짜를 선택해주세요</p>
+                                        <p className="text-sm text-gray-500">{t('travel_mates.filters.date_placeholder')}</p>
                                         <input
                                             type="date"
                                             value={filters.date}
@@ -330,7 +362,7 @@ export const TravelMates: React.FC = () => {
                                 {/* Gender Content */}
                                 {activeFilter === 'gender' && (
                                     <div className="flex flex-col gap-2">
-                                        {['남성', '여성'].map(g => (
+                                        {['male', 'female'].map(g => (
                                             <button
                                                 key={g}
                                                 onClick={() => {
@@ -342,7 +374,7 @@ export const TravelMates: React.FC = () => {
                                                     : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-white'
                                                     }`}
                                             >
-                                                {g} Only
+                                                {g === 'male' ? t('travel_mates.filters.gender_male_only') : t('travel_mates.filters.gender_female_only')}
                                             </button>
                                         ))}
                                         <button
@@ -352,7 +384,7 @@ export const TravelMates: React.FC = () => {
                                             }}
                                             className="p-4 rounded-xl text-left font-medium text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
                                         >
-                                            성별 무관/전체
+                                            {t('travel_mates.filters.gender_any')}
                                         </button>
                                     </div>
                                 )}
@@ -360,7 +392,7 @@ export const TravelMates: React.FC = () => {
                                 {/* Age Content */}
                                 {activeFilter === 'age' && (
                                     <div className="flex flex-wrap gap-2">
-                                        {['20대', '30대', '40대', '50대+'].map(age => (
+                                        {['20s', '30s', '40s', '50s_plus'].map(age => (
                                             <button
                                                 key={age}
                                                 onClick={() => {
@@ -372,7 +404,7 @@ export const TravelMates: React.FC = () => {
                                                     : 'bg-gray-50 dark:bg-gray-800 border-transparent dark:text-white'
                                                     }`}
                                             >
-                                                {age}
+                                                {t(`travel_mates.filters.age_${age}`)}
                                             </button>
                                         ))}
                                     </div>
@@ -381,7 +413,7 @@ export const TravelMates: React.FC = () => {
                                 {/* Style Content */}
                                 {activeFilter === 'style' && (
                                     <div className="flex flex-wrap gap-2">
-                                        {['🏞️ 힐링', '📸 인생샷', '💪 액티비티', '🍽️ 맛집 탐방', '⛺ 캠핑/차박'].map((style) => (
+                                        {['healing', 'photo', 'activity', 'food', 'camping'].map((style) => (
                                             <button
                                                 key={style}
                                                 onClick={() => {
@@ -393,7 +425,7 @@ export const TravelMates: React.FC = () => {
                                                     : 'bg-background-light dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-transparent hover:bg-gray-100 dark:hover:bg-gray-700'
                                                     }`}
                                             >
-                                                {style}
+                                                {t(`travel_mates.filters.style_${style}`)}
                                             </button>
                                         ))}
                                     </div>
@@ -403,7 +435,7 @@ export const TravelMates: React.FC = () => {
                                     onClick={() => setActiveFilter(null)}
                                     className="w-full mt-4 bg-primary text-white font-bold py-4 rounded-xl"
                                 >
-                                    확인
+                                    {t('travel_mates.modal.confirm')}
                                 </button>
                             </div>
                         </div>

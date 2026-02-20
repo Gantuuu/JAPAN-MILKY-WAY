@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api'; // Changed from supabase
 import { useUser } from '../contexts/UserContext';
 import { BottomNav } from '../components/layout/BottomNav';
 
@@ -31,58 +31,14 @@ export const ChatList: React.FC = () => {
         if (!user) return;
 
         const fetchRooms = async () => {
-            // Fetch rooms I am participating in
-            // Supabase Join Query
-            const { data, error } = await supabase
-                .from('chat_rooms')
-                .select(`
-                    id, 
-                    updated_at,
-                    chat_participants!inner (
-                        user_id
-                    )
-                `)
-                .eq('chat_participants.user_id', user.id)
-                .order('updated_at', { ascending: false });
-
-            if (error) {
+            setLoading(true);
+            try {
+                const data = await api.chats.list();
+                if (data) {
+                    setRooms(data);
+                }
+            } catch (error) {
                 console.error('Error fetching rooms:', error);
-                setLoading(false);
-                return;
-            }
-
-            // Now, for these rooms, fetch ALL participants (to find the partner) and last message
-            const roomIds = data.map(r => r.id);
-            if (roomIds.length === 0) {
-                setRooms([]);
-                setLoading(false);
-                return;
-            }
-
-            const { data: fullData, error: fullError } = await supabase
-                .from('chat_rooms')
-                .select(`
-                    id,
-                    updated_at,
-                    chat_participants (
-                        user_id,
-                        profiles (
-                            full_name,
-                            avatar_url,
-                            email
-                        )
-                    )
-                `)
-                .in('id', roomIds)
-                .order('updated_at', { ascending: false });
-
-            // Also fetch last message for each room (could be optimized with a view or function)
-            // For now, simple approach: just display room
-
-            if (fullError) {
-                console.error('Error fetching full room details:', fullError);
-            } else {
-                setRooms(fullData as unknown as ChatRoom[]);
             }
             setLoading(false);
         };

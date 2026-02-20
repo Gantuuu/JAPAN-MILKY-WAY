@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabaseClient';
+import { api } from '../../lib/api';
 import { getOptimizedImageUrl } from '../../utils/supabaseImage';
 import type { TourProduct } from '../../types/product';
 
@@ -10,39 +10,38 @@ export const CentralMongoliaSection: React.FC = () => {
 
     useEffect(() => {
         const fetchProducts = async () => {
-            const { data } = await supabase
-                .from('products')
-                .select('*')
-                .eq('category', '중앙몽골')
-                .eq('status', 'active')
-                .limit(4);
-
-            if (data) {
-                const formattedProducts = data.map(item => ({
-                    id: item.id,
-                    name: item.name,
-                    price: item.price,
-                    originalPrice: item.original_price,
-                    duration: item.duration,
-                    category: item.category,
-                    mainImages: item.main_images || [],
-                    isPopular: item.is_popular,
-                    tags: item.tags || [],
-                    description: item.description,
-                    galleryImages: item.gallery_images || [],
-                    detailImages: item.detail_images || [],
-                    itineraryImages: item.itinerary_images || [],
-                    status: item.status,
-                    isFeatured: item.is_featured,
-                    highlights: item.highlights || [],
-                    included: item.included || [],
-                    excluded: item.excluded || [],
-                    viewCount: item.view_count,
-                    bookingCount: item.booking_count,
-                    createdAt: item.created_at,
-                    updatedAt: item.updated_at
-                }));
-                setProducts(formattedProducts);
+            try {
+                const data = await api.products.list();
+                if (Array.isArray(data)) {
+                    const centralData = data.filter((item: any) => item.category === '중앙몽골' && item.status === 'active').slice(0, 4);
+                    const formattedProducts = centralData.map((item: any) => ({
+                        id: item.id,
+                        name: item.name,
+                        price: item.price,
+                        originalPrice: item.original_price,
+                        duration: item.duration,
+                        category: item.category,
+                        mainImages: item.main_images || [],
+                        isPopular: item.is_popular,
+                        tags: item.tags || [],
+                        description: item.description,
+                        galleryImages: item.gallery_images || [],
+                        detailImages: item.detail_images || [],
+                        itineraryImages: item.itinerary_images || [],
+                        status: item.status,
+                        isFeatured: item.is_featured,
+                        highlights: item.highlights || [],
+                        included: item.included || [],
+                        excluded: item.excluded || [],
+                        viewCount: item.view_count,
+                        bookingCount: item.booking_count,
+                        createdAt: item.created_at,
+                        updatedAt: item.updated_at
+                    }));
+                    setProducts(formattedProducts);
+                }
+            } catch (error) {
+                console.error('Error fetching Central Mongolia products:', error);
             }
         };
 

@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/api';
 import { BottomNav } from '../components/layout/BottomNav';
+import { useTranslation } from 'react-i18next';
+import { optimizeImage } from '../utils/imageOptimizer';
 
 export const TravelMateDetail: React.FC = () => {
     const navigate = useNavigate();
+    const { t } = useTranslation();
     const { id } = useParams<{ id: string }>();
     const [viewIncremented, setViewIncremented] = useState(false);
     const [post, setPost] = useState<any>(null);
@@ -14,8 +17,14 @@ export const TravelMateDetail: React.FC = () => {
 
     useEffect(() => {
         const fetchUser = async () => {
-            const { data } = await supabase.auth.getUser();
-            setCurrentUser(data.user);
+            try {
+                const me = await api.auth.me();
+                if (me) {
+                    setCurrentUser(me);
+                }
+            } catch (e) {
+                console.error("Error fetching user:", e);
+            }
         };
         fetchUser();
     }, []);
@@ -24,29 +33,27 @@ export const TravelMateDetail: React.FC = () => {
         const fetchPost = async () => {
             if (!id) return;
             setLoading(true);
-            const { data, error } = await supabase
-                .from('travel_mates')
-                .select('*')
-                .eq('id', id)
-                .single();
+            try {
+                const data = await api.travelMates.get(id);
 
-            if (error) {
+                if (data) {
+                    setPost({
+                        ...data,
+                        startDate: data.start_date,
+                        endDate: data.end_date,
+                        recruitCount: data.recruit_count,
+                        ageGroups: data.age_groups,
+                        authorImage: data.author_image,
+                        authorName: data.author_name,
+                        authorInfo: data.author_info,
+                        createdAt: data.created_at,
+                        updatedAt: data.updated_at,
+                        views: data.view_count,
+                        comments: data.comment_count
+                    });
+                }
+            } catch (error) {
                 console.error('Error fetching post:', error);
-            } else if (data) {
-                setPost({
-                    ...data,
-                    startDate: data.start_date,
-                    endDate: data.end_date,
-                    recruitCount: data.recruit_count,
-                    ageGroups: data.age_groups,
-                    authorImage: data.author_image,
-                    authorName: data.author_name,
-                    authorInfo: data.author_info,
-                    createdAt: data.created_at,
-                    updatedAt: data.updated_at,
-                    views: data.view_count,
-                    comments: data.comment_count
-                });
             }
             setLoading(false);
         };
@@ -59,11 +66,12 @@ export const TravelMateDetail: React.FC = () => {
     useEffect(() => {
         const incrementView = async () => {
             if (post && !viewIncremented && id) {
-                await supabase
-                    .from('travel_mates')
-                    .update({ view_count: post.views + 1 })
-                    .eq('id', id);
-                setViewIncremented(true);
+                try {
+                    await api.travelMates.update(id, { view_count: post.views + 1 });
+                    setViewIncremented(true);
+                } catch (e) {
+                    console.error("Error updating view count:", e);
+                }
             }
         };
         incrementView();
@@ -71,336 +79,183 @@ export const TravelMateDetail: React.FC = () => {
 
     const handleStartChat = async () => {
         if (!currentUser) {
-            alert('로그인이 필요한 서비스입니다.');
+            alert(t('travel_mates.detail.login_required'));
             navigate('/login');
             return;
         }
 
         if (currentUser.id === post.user_id) {
-            alert('자신의 게시물입니다.');
+            alert(t('travel_mates.detail.own_post'));
             return;
         }
 
         try {
             setLoading(true);
-
-            // 1. Check if chat room already exists
-            // Since Supabase doesn't support complex joins easily for "room with exactly these 2 users",
-            // we'll fetch my rooms and check if author is in them.
-            // Optimized: Fetch my rooms -> Fetch participants for those rooms -> Filter
-
-            const { data: myRooms } = await supabase
-                .from('chat_participants')
-                .select('room_id')
-                .eq('user_id', currentUser.id);
-
-            const myRoomIds = myRooms?.map(r => r.room_id) || [];
-
-            if (myRoomIds.length > 0) {
-                const { data: existingChat } = await supabase
-                    .from('chat_participants')
-                    .select('room_id')
-                    .in('room_id', myRoomIds)
-                    .eq('user_id', post.user_id)
-                    .limit(1)
-                    .single();
-
-                if (existingChat) {
-                    navigate(`/chats/${existingChat.room_id}`);
-                    setLoading(false);
-                    return;
-                }
+            const room = await api.chats.create({ partner_id: post.user_id });
+            if (room && room.id) {
+                navigate(`/chats/${room.id}`);
+            } else {
+                throw new Error("Failed to create chat room");
             }
-
-            // 2. Create new room if not exists
-            const { data: newRoom, error: roomError } = await supabase
-                .from('chat_rooms')
-                .insert({})
-                .select()
-                .single();
-
-            if (roomError) throw roomError;
-
-            // 3. Add participants
-            const { error: participantError } = await supabase
-                .from('chat_participants')
-                .insert([
-                    { room_id: newRoom.id, user_id: currentUser.id },
-                    { room_id: newRoom.id, user_id: post.user_id }
-                ]);
-
-            if (participantError) throw participantError;
-
-            navigate(`/chats/${newRoom.id}`);
-
         } catch (error) {
-            console.error('Error starting chat:', error);
-            alert('채팅방 생성 중 오류가 발생했습니다.');
+            console.error('Error creating chat:', error);
+            alert('Failed to start chat');
         } finally {
             setLoading(false);
         }
     };
 
-    const handleToggleStatus = async () => {
-        if (!post) return;
-        const newStatus = post.status === 'recruiting' ? 'closed' : 'recruiting';
-
-        const { error } = await supabase
-            .from('travel_mates')
-            .update({ status: newStatus, updated_at: new Date().toISOString() })
-            .eq('id', post.id);
-
-        if (!error) {
-            setPost({ ...post, status: newStatus });
+    const handleDelete = async () => {
+        if (!window.confirm(t('travel_mates.detail.delete_confirm'))) return;
+        try {
+            await api.travelMates.delete(id!);
+            navigate('/travel-mates');
+        } catch (error) {
+            console.error('Error deleting post:', error);
+            alert('Failed to delete');
         }
     };
 
-    const formatTimeAgo = (dateStr: string): string => {
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diffMs = now.getTime() - date.getTime();
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMins / 60);
-        const diffDays = Math.floor(diffHours / 24);
-
-        if (diffMins < 1) return '방금 전';
-        if (diffMins < 60) return `${diffMins}분 전`;
-        if (diffHours < 24) return `${diffHours}시간 전`;
-        if (diffDays < 30) return `${diffDays}일 전`;
-        return `${Math.floor(diffDays / 30)}개월 전`;
-    };
-
-    if (loading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-background-light dark:bg-background-dark">
-                <div className="text-center">
-                    <span className="material-symbols-outlined text-5xl text-gray-300 animate-pulse">hourglass_empty</span>
-                    <p className="mt-4 text-gray-500">불러오는 중...</p>
-                </div>
-            </div>
-        );
-    }
+    if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>;
+    if (!post) return <div className="min-h-screen flex items-center justify-center">Post not found</div>;
 
     return (
-        <div className="bg-background-light dark:bg-background-dark font-display text-text-main-light dark:text-text-main-dark antialiased transition-colors duration-200 min-h-screen pb-32">
-            <div className="relative flex h-full min-h-screen w-full flex-col overflow-hidden max-w-md mx-auto shadow-none bg-white dark:bg-[#12201d]">
-                {/* Header */}
+        <div className="bg-background-light dark:bg-background-dark font-display antialiased min-h-screen pb-24">
+            <div className="relative min-h-screen max-w-md mx-auto bg-white dark:bg-[#12201d] shadow-xl overflow-hidden flex flex-col">
+                {/* Header Image Area */}
+                <div className="relative h-72 w-full">
+                    <img
+                        src={optimizeImage(post.image || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4', { width: 600 })}
+                        alt={post.title}
+                        className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60"></div>
 
-                <header className="sticky top-0 z-50 flex items-center justify-between bg-white/90 dark:bg-[#12201d]/90 backdrop-blur-md px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-                    <button
-                        onClick={() => navigate(-1)}
-                        className="flex size-10 items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                    >
-                        <span className="material-symbols-outlined text-text-main-light dark:text-text-main-dark">arrow_back</span>
-                    </button>
-                    <h2 className="text-base font-bold">게시물 상세</h2>
-                    <button
-                        onClick={async () => {
-                            const shareData = {
-                                title: post?.title || '동행 찾기',
-                                text: post?.description || '몽골 여행 동행을 찾고 있어요!',
-                                url: window.location.href
-                            };
-
-                            if (navigator.share) {
-                                try {
-                                    await navigator.share(shareData);
-                                } catch (err) {
-                                    console.log('Share cancelled or failed');
-                                }
-                            } else {
-                                // Fallback: copy link to clipboard
-                                try {
-                                    await navigator.clipboard.writeText(window.location.href);
-                                    alert('링크가 클립보드에 복사되었습니다!');
-                                } catch (err) {
-                                    alert('공유할 수 없습니다.');
-                                }
-                            }
-                        }}
-                        className="flex size-10 items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                    >
-                        <span className="material-symbols-outlined text-text-main-light dark:text-text-main-dark">share</span>
-                    </button>
-                </header>
-
-                {/* Main Content */}
-                <main className="flex-1 overflow-y-auto no-scrollbar pb-40">
-                    {/* Post Image */}
-                    {post.image && (
-                        <div className="w-full h-56 bg-gray-200">
-                            <img
-                                src={post.image}
-                                alt={post.title}
-                                className="w-full h-full object-cover"
-                            />
+                    {/* Top Nav */}
+                    <div className="absolute top-0 left-0 right-0 p-5 pt-4 flex items-center justify-between">
+                        <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-white/90 hover:text-white bg-black/20 backdrop-blur-sm rounded-full">
+                            <span className="material-symbols-outlined">arrow_back_ios_new</span>
+                        </button>
+                        <div className="flex gap-2">
+                            {isOwner && (
+                                <>
+                                    <button onClick={() => navigate(`/travel-mates/edit/${id}`)} className="p-2 text-white/90 hover:text-white bg-black/20 backdrop-blur-sm rounded-full">
+                                        <span className="material-symbols-outlined">edit</span>
+                                    </button>
+                                    <button onClick={handleDelete} className="p-2 text-white/90 hover:text-white bg-black/20 backdrop-blur-sm rounded-full">
+                                        <span className="material-symbols-outlined">delete</span>
+                                    </button>
+                                </>
+                            )}
                         </div>
-                    )}
+                    </div>
 
-                    {/* Post Title Section */}
-                    <div className="px-5 pt-6 pb-4">
-                        <div className="flex gap-2 mb-3 flex-wrap">
-                            <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-semibold ${post.status === 'closed' ? 'bg-gray-200 text-gray-600' : 'bg-primary/10 text-primary'}`}>
-                                {post.status === 'closed' ? '모집완료' : '모집중'}
+                    {/* Title & Info Overlay */}
+                    <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="px-2.5 py-1 rounded-lg bg-primary/90 text-white text-xs font-bold backdrop-blur-md shadow-sm">
+                                {post.status === 'closed' ? t('travel_mates.detail.closed_status') : 'Recruiting'}
                             </span>
-                            {post.ageGroups.map(age => (
-                                <span key={age} className="inline-flex items-center rounded-lg bg-gray-100 dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300">
-                                    {age}
-                                </span>
-                            ))}
-                            <span className="inline-flex items-center rounded-lg bg-gray-100 dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300">
-                                {post.gender === '무관' ? '성별무관' : post.gender}
+                            <span className="px-2.5 py-1 rounded-lg bg-black/40 text-white/90 text-xs font-medium backdrop-blur-md">
+                                {t('travel_mates.detail.views', { count: post.views })}
                             </span>
                         </div>
-                        <h1 className="text-2xl font-bold leading-tight tracking-tight mb-2">
-                            {post.title}
-                        </h1>
-                    </div>
-
-                    {/* Author Profile */}
-                    <div className="px-5 pb-6">
-                        <div className="flex items-center justify-between p-3 rounded-2xl bg-gray-50 dark:bg-surface-dark/50">
-                            <div className="flex items-center gap-3">
-                                <div className="relative">
-                                    <div
-                                        className="size-12 rounded-full bg-cover bg-center border-2 border-white dark:border-gray-700 shadow-sm"
-                                        style={{ backgroundImage: `url('${post.authorImage || 'https://via.placeholder.com/100'}')` }}
-                                    ></div>
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="font-bold text-sm">{post.authorName}</span>
-                                    <span className="text-xs text-text-sub-light dark:text-text-sub-dark">{formatTimeAgo(post.createdAt)} 작성</span>
-                                </div>
-                            </div>
-                            <button className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                                <span className="material-symbols-outlined">more_vert</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Divider */}
-                    <div className="border-b border-gray-100 dark:border-gray-800"></div>
-
-                    {/* Trip Details Grid */}
-                    <div className="px-5 py-6">
-                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                            <span className="material-symbols-outlined text-primary">info</span>
-                            여행 정보
-                        </h3>
-                        <div className="grid grid-cols-2 gap-3">
-                            {/* Date */}
-                            <div className="flex flex-col gap-1 p-4 rounded-2xl bg-white dark:bg-surface-dark border border-gray-100 dark:border-gray-800 shadow-sm">
-                                <span className="text-xs text-text-sub-light dark:text-text-sub-dark font-medium mb-1">여행 기간</span>
-                                <div className="flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-primary text-lg">calendar_month</span>
-                                    <span className="font-bold text-sm">{post.startDate} - {post.endDate}</span>
-                                </div>
-                            </div>
-                            {/* Location */}
-                            <div className="flex flex-col gap-1 p-4 rounded-2xl bg-white dark:bg-surface-dark border border-gray-100 dark:border-gray-800 shadow-sm">
-                                <span className="text-xs text-text-sub-light dark:text-text-sub-dark font-medium mb-1">여행지</span>
-                                <div className="flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-primary text-lg">location_on</span>
-                                    <span className="font-bold text-sm">{post.region}</span>
-                                </div>
-                            </div>
-                            {/* People */}
-                            <div className="flex flex-col gap-1 p-4 rounded-2xl bg-white dark:bg-surface-dark border border-gray-100 dark:border-gray-800 shadow-sm">
-                                <span className="text-xs text-text-sub-light dark:text-text-sub-dark font-medium mb-1">모집 인원</span>
-                                <div className="flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-primary text-lg">group</span>
-                                    <span className="font-bold text-sm">{post.recruitCount}명</span>
-                                </div>
-                            </div>
-                            {/* Style */}
-                            <div className="flex flex-col gap-1 p-4 rounded-2xl bg-white dark:bg-surface-dark border border-gray-100 dark:border-gray-800 shadow-sm">
-                                <span className="text-xs text-text-sub-light dark:text-text-sub-dark font-medium mb-1">여행 스타일</span>
-                                <div className="flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-primary text-lg">photo_camera</span>
-                                    <span className="font-bold text-sm">{post.styles[0]?.replace(/^[^\w가-힣]+/, '') || '기타'}</span>
-                                </div>
+                        <h1 className="text-2xl font-bold leading-tight mb-3 drop-shadow-sm">{post.title}</h1>
+                        <div className="flex items-center gap-3">
+                            <img src={post.authorImage || 'https://via.placeholder.com/40'} alt={post.authorName} className="w-10 h-10 rounded-full border-2 border-white/20" />
+                            <div>
+                                <p className="font-bold text-sm">{post.authorName}</p>
+                                <p className="text-xs text-white/70">{post.authorInfo}</p>
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    {/* Tags */}
-                    <div className="px-5 pb-4">
-                        <div className="flex flex-wrap gap-2">
-                            {post.tags.map((tag, idx) => (
-                                <span key={idx} className="text-sm font-medium px-3 py-1.5 rounded-full bg-primary/10 text-primary">
-                                    {tag}
+                {/* Content Body */}
+                <div className="flex-1 px-6 py-8 space-y-8 bg-white dark:bg-[#12201d] rounded-t-3xl -mt-6 relative z-10">
+
+                    {/* Key Info Grid */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="p-4 rounded-2xl bg-background-light dark:bg-gray-800/50 space-y-1">
+                            <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 mb-1">
+                                <span className="material-symbols-outlined text-[18px]">calendar_today</span>
+                                <span className="text-xs font-bold">{t('travel_mates.detail.period')}</span>
+                            </div>
+                            <p className="font-bold text-gray-900 dark:text-white text-sm">{post.startDate} ~ {post.endDate}</p>
+                            <p className="text-xs text-primary font-medium">{post.duration}</p>
+                        </div>
+                        <div className="p-4 rounded-2xl bg-background-light dark:bg-gray-800/50 space-y-1">
+                            <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 mb-1">
+                                <span className="material-symbols-outlined text-[18px]">group</span>
+                                <span className="text-xs font-bold">{t('travel_mates.detail.people')}</span>
+                            </div>
+                            <p className="font-bold text-gray-900 dark:text-white text-sm">{t('travel_mates.detail.recruit_count', { count: post.recruitCount })}</p>
+                            <p className="text-xs text-gray-500">{t(`travel_mates.filters.gender_${post.gender}`)}</p>
+                        </div>
+                    </div>
+
+                    <div className="h-px bg-gray-100 dark:bg-gray-800"></div>
+
+                    {/* Detailed info options */}
+                    <div className="space-y-4">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3 ml-1">{t('travel_mates.detail.age')}</h3>
+                            <div className="flex flex-wrap gap-2">
+                                {post.ageGroups.map((age: string) => (
+                                    <span key={age} className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium">
+                                        {t(`travel_mates.filters.age_${age}`)}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3 ml-1">{t('travel_mates.detail.style')}</h3>
+                            <div className="flex flex-wrap gap-2">
+                                {post.styles.map((style: string) => (
+                                    <span key={style} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-sm font-bold">
+                                        {style}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-3 ml-1">{t('travel_mates.detail.region')}</h3>
+                            <div className="flex flex-wrap gap-2">
+                                <span className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium">
+                                    {post.region}
                                 </span>
-                            ))}
+                            </div>
                         </div>
                     </div>
+
+                    <div className="h-px bg-gray-100 dark:bg-gray-800"></div>
 
                     {/* Description Text */}
-                    {/* Description Text */}
-                    <div className="px-5 pb-6">
-                        <div className="bg-gray-50 dark:bg-gray-800/50 p-5 rounded-2xl">
-                            <h3 className="text-base font-bold mb-3 flex items-center gap-2 text-gray-900 dark:text-gray-100">
-                                <span className="material-symbols-outlined text-primary text-[20px]">description</span>
-                                상세 내용
-                            </h3>
-                            <p className="text-base leading-relaxed text-gray-700 dark:text-gray-300 whitespace-pre-line">
-                                {post.description}
-                            </p>
-                        </div>
+                    <div className="space-y-3">
+                        <h2 className="text-lg font-bold text-gray-900 dark:text-white">Description</h2>
+                        <p className="text-gray-600 dark:text-gray-300 text-base leading-relaxed whitespace-pre-wrap">
+                            {post.description}
+                        </p>
                     </div>
 
-                    {/* Divider */}
-                    <div className="border-b border-gray-100 dark:border-gray-800"></div>
+                </div>
 
-                    {/* Stats */}
-                    <div className="px-5 py-4 flex items-center gap-4">
-                        <div className="flex items-center gap-1 text-gray-400 dark:text-gray-500">
-                            <span className="material-symbols-outlined text-[18px]">visibility</span>
-                            <span className="text-[13px] font-medium pt-[1px]">조회 {post.views}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-gray-400 dark:text-gray-500">
-                            <span className="material-symbols-outlined text-[17px]">chat_bubble</span>
-                            <span className="text-[13px] font-medium pt-[1px]">댓글 {post.comments}</span>
-                        </div>
-                    </div>
-
-                    {/* Toggle Status Button (Only for Owner) */}
-                    {isOwner && (
-                        <div className="px-5 pb-6">
-                            <button
-                                onClick={handleToggleStatus}
-                                className={`w-full py-3 rounded-xl font-bold text-sm shadow-none ${post.status === 'recruiting'
-                                    ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
-                                    : 'bg-primary/10 text-primary'
-                                    }`}
-                            >
-                                {post.status === 'recruiting' ? '모집 마감하기' : '다시 모집하기'}
-                            </button>
-                        </div>
+                {/* Footer Action */}
+                <div className="sticky bottom-0 p-5 bg-white dark:bg-[#12201d] border-t border-gray-100 dark:border-gray-800 pb-8">
+                    {post.status === 'closed' ? (
+                        <button disabled className="w-full bg-gray-300 dark:bg-gray-700 text-white font-bold text-lg py-4 rounded-2xl cursor-not-allowed">
+                            {t('travel_mates.detail.closed_status')}
+                        </button>
+                    ) : (
+                        <button
+                            onClick={handleStartChat}
+                            className="w-full bg-primary text-white font-bold text-lg py-4 rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary/90 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                        >
+                            <span className="material-symbols-outlined">chat_bubble</span>
+                            <span>{t('travel_mates.detail.chat_btn')}</span>
+                        </button>
                     )}
-                </main>
-
-                {/* Floating Sticky Action Bar (Only for Non-Owner) */}
-                {!isOwner && (
-                    <div className="absolute bottom-[84px] left-0 right-0 z-20 px-5 pb-5 pointer-events-none" style={{ background: 'none !important', boxShadow: 'none !important', backdropFilter: 'none !important' }}>
-                        <div className="flex gap-3 max-w-md mx-auto pointer-events-auto">
-                            <button
-                                onClick={handleStartChat}
-                                disabled={loading}
-                                className="flex-1 rounded-2xl bg-primary hover:bg-primary-dark text-white font-bold text-lg h-14 flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-none drop-shadow-none disabled:bg-gray-300 disabled:cursor-not-allowed"
-                            >
-                                {loading ? (
-                                    <span className="material-symbols-outlined animate-spin">refresh</span>
-                                ) : (
-                                    <span className="material-symbols-outlined">chat_bubble</span>
-                                )}
-                                1:1 채팅하기
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Bottom Navigation - Same as main page */}
-                <BottomNav />
+                </div>
             </div>
         </div>
     );

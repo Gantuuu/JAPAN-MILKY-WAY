@@ -81,14 +81,15 @@ export const Reservation: React.FC = () => {
                         const sorted = [...found.pricingOptions].sort((a, b) => a.people - b.people);
                         setTotalPeople(sorted[0].people);
                     }
-                } catch (error) {
-                    console.error('Product not found or error:', error);
-                } finally {
-                    setLoading(false);
                 }
-            };
-            loadProduct();
-        }, [id]);
+            } catch (error) {
+                console.error('Product not found or error:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadProduct();
+    }, [id]);
 
     // Calculation Logic
     // Calculation Logic

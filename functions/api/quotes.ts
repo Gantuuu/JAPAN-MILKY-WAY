@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
-import { quotes } from '../../db/schema'; // Ensure this exists or use placeholder
+import { quotes } from '../../src/db/schema';
 import { initializeLucia } from '../lib/auth';
 import { getCookie } from 'hono/cookie';
 import { eq, desc } from 'drizzle-orm';
